@@ -52,24 +52,26 @@ def read_data(filename):
     return data
 
 def compute_score(data, em_segmenter, threshold=args.threshold):
-    
-    all_geo_means = []
-
+    word2score = defaultdict(list)
     for word, tag, segmentation in data:
         for segment in segmentation:
             prob = em_segmenter.get_prob(segment, tag)
-            align_probs_per_word = [p for p in prob.values() if p >= threshold]
+            for scores in prob.values():
+                if scores > args.threshold:
+                    word2score[word].append(scores)
 
-            if align_probs_per_word:
-                geo_mean = math.prod(align_probs_per_word) ** (1 / len(align_probs_per_word))
-                all_geo_means.append(geo_mean)
-            else:
-                all_geo_means.append(0.0)
+    s =list()
+    g = list()
+    for word, scores in word2score.items():
+        word_score = math.prod(scores)
+        geo_mean = (math.pow(word_score, (1 / len(scores))))
+        s.append(word_score)
+        g.append(geo_mean)
 
-    if all_geo_means:
-        return sum(all_geo_means) / len(all_geo_means)
-    else:
-        return 0.0
+    total_s = sum(s)/ len(s)
+    total_g = sum(g)/ len(g)
+    
+    return total_g
 
 em_segmenter = IBM1(num_iterations=args.iterations)
 

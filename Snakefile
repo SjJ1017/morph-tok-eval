@@ -36,7 +36,7 @@ def train_tokenizer(input_file, save_path, vocab_size, model_type):
     from tokenizers import Tokenizer
     from tokenizers.models import BPE, Unigram
     from tokenizers.normalizers import NFD
-    from tokenizers.pre_tokenizers import WhiteSpace
+    from tokenizers.pre_tokenizers import Whitespace
     from tokenizers.trainers import BpeTrainer, UnigramTrainer
 
     model_class = BPE if model_type == "bpe" else Unigram
@@ -46,11 +46,11 @@ def train_tokenizer(input_file, save_path, vocab_size, model_type):
     
     # Customize the tokenizer
     tokenizer.normalizer = NFD()
-    tokenizer.pre_tokenizer = WhiteSpace()
+    tokenizer.pre_tokenizer = Whitespace()
     
     # Initialize the trainer
     trainer = trainer_class(
-        vocab_size=1000 * vocab_size,
+        vocab_size=vocab_size,
         min_frequency=2,
         special_tokens=["<unk>", "<pad>", "<s>", "</s>", "<mask>"]
     )
@@ -60,7 +60,7 @@ def train_tokenizer(input_file, save_path, vocab_size, model_type):
 
     # Save the tokenizer
     tokenizer.save(save_path)
-    print(f"BPE tokenizer with vocab size {vocab_size} saved to {save_path}")
+    print(f"{model_type} tokenizer with vocab size {vocab_size} saved to {save_path}")
 
 
 rule train_bpe:
@@ -70,8 +70,8 @@ rule train_bpe:
         "tokenizers/{lng}/bpe-{vocab_size}k/vocab.json"
     run:
         train_tokenizer(
-            input_file=input_file,
-            save_path=output,
+            input_file=input[0],
+            save_path=output[0],
             vocab_size=1000 * int(wildcards.vocab_size),
             model_type="bpe"
         )
@@ -84,8 +84,8 @@ rule train_unigram:
         "tokenizers/{lng}/unigram-{vocab_size}k/vocab.json"
     run:
         train_tokenizer(
-            input_file=input_file,
-            save_path=output,
+            input_file=input[0],
+            save_path=output[0],
             vocab_size=1000 * int(wildcards.vocab_size),
             model_type="unigram"
         )

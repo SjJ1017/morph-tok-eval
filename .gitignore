@@ -1,3 +1,4 @@
 .snakemake
 data/cc100
 tokenizers
+segmented

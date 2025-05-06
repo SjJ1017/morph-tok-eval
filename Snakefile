@@ -32,15 +32,22 @@ rule download_cc100:
         """
 
 
-def train_tokenizer(input_file, save_path, vocab_size, model_type):
+rule train_tokenizer:
+    input:
+        "data/cc100/{lng}.txt"
+    output:
+        "tokenizers/{lng}/{tokenizer_type}-{vocab_size}k.json"
+    wildcard_constraints:
+        tokenizer_type="bpe|unigram"
+    run:
     from tokenizers import Tokenizer
     from tokenizers.models import BPE, Unigram
     from tokenizers.normalizers import NFD
     from tokenizers.pre_tokenizers import Whitespace
     from tokenizers.trainers import BpeTrainer, UnigramTrainer
 
-    model_class = BPE if model_type == "bpe" else Unigram
-    trainer_class = BpeTrainer if model_type == "bpe" else UnigramTrainer
+        model_class = BPE if wildcards.tokenizer_type == "bpe" else Unigram
+        trainer_class = BpeTrainer if wildcards.tokenizer_type == "bpe" else UnigramTrainer
 
     tokenizer = Tokenizer(model_class())
     
@@ -50,42 +57,14 @@ def train_tokenizer(input_file, save_path, vocab_size, model_type):
     
     # Initialize the trainer
     trainer = trainer_class(
-        vocab_size=vocab_size,
+            vocab_size=1000 * int(wildcards.vocab_size),
         min_frequency=2,
         special_tokens=["<unk>", "<pad>", "<s>", "</s>", "<mask>"]
     )
     
     # Train the tokenizer
-    tokenizer.train(files=[input_file], trainer=trainer)
+        tokenizer.train(files=input, trainer=trainer)
 
     # Save the tokenizer
-    tokenizer.save(save_path)
-    print(f"{model_type} tokenizer with vocab size {vocab_size} saved to {save_path}")
-
-
-rule train_bpe:
-    input:
-        "data/cc100/{lng}.txt"
-    output:
-        "tokenizers/{lng}/bpe-{vocab_size}k/vocab.json"
-    run:
-        train_tokenizer(
-            input_file=input[0],
-            save_path=output[0],
-            vocab_size=1000 * int(wildcards.vocab_size),
-            model_type="bpe"
-        )
-
-
-rule train_unigram:
-    input:
-        "data/cc100/{lng}.txt"
-    output:
-        "tokenizers/{lng}/unigram-{vocab_size}k/vocab.json"
-    run:
-        train_tokenizer(
-            input_file=input[0],
-            save_path=output[0],
-            vocab_size=1000 * int(wildcards.vocab_size),
-            model_type="unigram"
-        )
+        tokenizer.save(output[0])
+        print(f"{wildcards.tokenizer_type} tokenizer with vocab size {wildcards.vocab_size}k saved to {output[0]}")

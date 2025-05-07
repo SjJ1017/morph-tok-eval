@@ -44,7 +44,7 @@ def read_data(filename):
     data = []
     with open(filename) as file:
         for line in file:
-            lemma, word, tag, segmentation = line.split("\t")
+            word, tag, segmentation = line.split("\t")
             tags = tag.split("|")
             segments = segmentation.strip().split("|")  
             data.append((word, tags, segments))      

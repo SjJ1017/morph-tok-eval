@@ -102,12 +102,14 @@ def evaluate_segmentations(iterations, threshold, gold_file, test_file):
         f_scores = []
         num_segments = []
         
-        with open(gold_file, 'r', encoding='utf-8') as pred_file, \
-             open(test_file, 'r', encoding='utf-8') as gold_file:
-                for pred_line, gold_line in zip(pred_file, gold_file):
+        with open(test_file, 'r', encoding='utf-8') as test_f, \
+             open(gold_file, 'r', encoding='utf-8') as gold_f:
+                for pred_line, gold_line in zip(test_f, gold_f):
                     pred_parts = pred_line.strip().split('\t')
                     gold_parts = gold_line.strip().split('\t')
 
+                    if len(pred_parts) != 3 or len(gold_parts) != 3:
+                        continue
                     pred_segments = pred_parts[2].split('|')
                     gold_segments = gold_parts[2].split('|')
 

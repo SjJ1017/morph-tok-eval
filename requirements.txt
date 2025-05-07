@@ -4,3 +4,4 @@ tokenizers
 sentencepiece
 transformers
 protobuf
+pandas

@@ -1,3 +1,4 @@
+
 LANGUAGES = ["ces", "fin", "hye", "kan"]
 
 LNG_CODES = {
@@ -32,15 +33,15 @@ PRE_TRAINED_TOKENIZERS = {
 }
 
 
+THRESHOLDS = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5]
+
+
 localrules: tokenize_unimorph_our_tokenizer, tokenize_unimorph_huggingface
 
 
 rule all:
     input:
-        expand("evaluated/{lng}/{tok_type}-{vocab_size}k-{threshold}.json",
-            lng=LANGUAGES, vocab_size=VOCAB_SIZES, tok_type=["bpe", "unigram"], threshold=[0.1, 0.2, 0.3]),
-        expand("evaluated/{lng}/pretrained-{tokenizer}-{threshold}.json",
-            lng=LANGUAGES, tokenizer=PRE_TRAINED_TOKENIZERS.keys(), threshold=[0.1, 0.2, 0.3]),
+        expand("correlations/{lng}.txt", lng=LANGUAGES),
 
 
 rule download_cc100:
@@ -164,3 +165,102 @@ rule evaluate_segmentation:
             10, float(wildcards.threshold), input.gold_data, input.segmented_data)
         with open(output[0], 'w', encoding='UTF-8') as f_out:
             json.dump(results, f_out, ensure_ascii=False, indent=4)
+
+
+def load_json_files_to_dataframe(file_list):
+    from collections import defaultdict
+    import re
+    import json
+    import pandas as pd
+
+    # Dictionary to store data grouped by tokenizer
+    tokenizer_data = defaultdict(dict)
+    
+    # Pattern to extract tokenizer and threshold from filename
+    pattern = r"(.*)-(\d+\.\d+)\.json"
+    
+    # Iterate through all JSON files in the directory
+    for filename in file_list:
+        # Extract tokenizer and threshold from filename
+        match = re.match(pattern, filename)
+        if match:
+            tokenizer_name = match.group(1)
+            threshold = float(match.group(2))
+            
+            # Load the JSON content
+            with open(filename, 'r') as file:
+                json_content = json.load(file)
+            
+            # Process the JSON content according to requirements
+            processed_content = {}
+            
+            for key, value in json_content.items():
+                if key.startswith('gold'):
+                    # Skip items starting with 'gold'
+                    continue
+                elif key.startswith('test'):
+                    # For 'test' items, append the threshold
+                    new_key = f"{key}_{threshold}"
+                    processed_content[new_key] = value
+                else:
+                    # For other items, keep them as is
+                    processed_content[key] = value
+            
+            # Update the tokenizer's data
+            tokenizer_data[tokenizer_name].update(processed_content)
+    
+    # Convert the processed data to a DataFrame
+    rows = []
+    for tokenizer_name, content in tokenizer_data.items():
+        row = {'tokenizer': tokenizer_name}
+        row.update(content)
+        rows.append(row)
+    
+    # Create DataFrame
+    df = pd.DataFrame(rows)
+    
+    # Ensure tokenizer is the first column
+    if not df.empty:
+        columns = df.columns.tolist()
+        columns.remove('tokenizer')
+        df = df[['tokenizer'] + columns]
+    
+    return df
+
+
+rule compute_correlations:
+    input:
+        our_tokenizers=expand("evaluated/{{lng}}/{tok_type}-{vocab_size}k-{threshold}.json",
+            vocab_size=VOCAB_SIZES, tok_type=["bpe", "unigram"], threshold=THRESHOLDS),
+        pretrained_tokenizers=expand("evaluated/{{lng}}/pretrained-{tokenizer}-{threshold}.json",
+            tokenizer=PRE_TRAINED_TOKENIZERS.keys(), threshold=THRESHOLDS),
+    output:
+        "correlations/{lng}.txt"
+    run:
+        import pandas as pd
+
+        df = load_json_files_to_dataframe(input.our_tokenizers + input.pretrained_tokenizers)
+
+        # Identify columns that start with 'test-'
+        test_columns = [col for col in df.columns if col.startswith('test-')]
+        
+        # Identify other columns (excluding 'tokenizer' which is likely non-numeric)
+        other_columns = [col for col in df.columns 
+                        if not col.startswith('test-') and col != 'tokenizer']
+        
+        # Create an empty DataFrame to store correlations
+        correlation_df = pd.DataFrame(
+            index=test_columns,
+            columns=other_columns,
+            dtype=float
+        )
+
+        # Calculate correlations
+        for test_col in test_columns:
+            for other_col in other_columns:
+                correlation = df[test_col].corr(df[other_col])
+                correlation_df.at[test_col, other_col] = correlation
+
+        # Save the correlation DataFrame to a text file
+        correlation_df.to_csv(output[0], sep='\t', index=True, header=True)
+        print(f"Correlations saved to {output[0]}")

@@ -8,7 +8,7 @@ LNG_CODES = {
 }
 
 
-VOCAB_SIZES = [1, 2, 4, 8, 16, 24, 32, 40, 48, 56, 64, 72, 80]
+VOCAB_SIZES = [2, 4, 8, 16, 24, 32, 40, 48, 56, 64, 72, 80]
 
 
 PRE_TRAINED_TOKENIZERS = {
@@ -23,9 +23,12 @@ PRE_TRAINED_TOKENIZERS = {
     "nllb": "facebook/nllb-200-1.3B",
     "mistral": "mistralai/Mistral-7B-v0.1",
     "llama2": "meta-llama/Llama-2-7b",
-    "llama3": "meta-llama/Llama-3-7b",
+    "llama3": "meta-llama/Llama-3.1-8B-Instruct",
+    "gemma2": "google/gemma-2-2b-it",
     "gemma3": "google/gemma-3-1b-it",
+    "qwen2": "Qwen/Qwen2.5-Omni-3B",
     "qwen3": "Qwen/Qwen3-0.6B",
+    "falcon": "tiiuae/falcon-7b-instruct",
 }
 
 

@@ -1,3 +1,6 @@
 snakemake
 snakemake-executor-plugin-slurm
 tokenizers
+sentencepiece
+transformers
+protobuf

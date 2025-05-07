@@ -37,9 +37,9 @@ localrules: tokenize_unimorph_our_tokenizer, tokenize_unimorph_huggingface
 
 rule all:
     input:
-        expand("segmented/{lng}/{tok_type}-{vocab_size}k.tsv",
+        expand("evaluated/{lng}/{tok_type}-{vocab_size}k.json",
             lng=LANGUAGES, vocab_size=VOCAB_SIZES, tok_type=["bpe", "unigram"]),
-        expand("segmented/{lng}/pretrained-{tokenizer}.tsv",
+        expand("evaluated/{lng}/pretrained-{tokenizer}.json",
             lng=LANGUAGES, tokenizer=PRE_TRAINED_TOKENIZERS.keys()),
 
 
@@ -149,3 +149,18 @@ rule tokenize_unimorph_huggingface:
             output_file=output[0],
             tokenizer=tokenizer
         )
+
+
+rule evaluate_segmentation:
+    input:
+        gold_data="data/{lng}/{lng}.tsv",
+        segmented_data="segmented/{lng}/{segmented_file}.tsv"
+    output:
+        "evaluated/{lng}/{segmented_file}.json"
+    run:
+        import json
+        from align import evaluate_segmentations
+        results = evaluate_segmentations(10, 0.1, 
+            input.gold_data, input.segmented_data)
+        with open(output[0], 'w', encoding='UTF-8') as f_out:
+            json.dump(results, f_out, ensure_ascii=False, indent=4)

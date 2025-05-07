@@ -37,10 +37,10 @@ localrules: tokenize_unimorph_our_tokenizer, tokenize_unimorph_huggingface
 
 rule all:
     input:
-        expand("evaluated/{lng}/{tok_type}-{vocab_size}k.json",
-            lng=LANGUAGES, vocab_size=VOCAB_SIZES, tok_type=["bpe", "unigram"]),
-        expand("evaluated/{lng}/pretrained-{tokenizer}.json",
-            lng=LANGUAGES, tokenizer=PRE_TRAINED_TOKENIZERS.keys()),
+        expand("evaluated/{lng}/{tok_type}-{vocab_size}k-{threshold}.json",
+            lng=LANGUAGES, vocab_size=VOCAB_SIZES, tok_type=["bpe", "unigram"], threshold=[0.1, 0.2, 0.3]),
+        expand("evaluated/{lng}/pretrained-{tokenizer}-{threshold}.json",
+            lng=LANGUAGES, tokenizer=PRE_TRAINED_TOKENIZERS.keys(), threshold=[0.1, 0.2, 0.3]),
 
 
 rule download_cc100:
@@ -156,11 +156,11 @@ rule evaluate_segmentation:
         gold_data="data/{lng}/{lng}.tsv",
         segmented_data="segmented/{lng}/{segmented_file}.tsv"
     output:
-        "evaluated/{lng}/{segmented_file}.json"
+        "evaluated/{lng}/{segmented_file}-{threshold}.json"
     run:
         import json
         from align import evaluate_segmentations
-        results = evaluate_segmentations(10, 0.1, 
-            input.gold_data, input.segmented_data)
+        results = evaluate_segmentations(
+            10, float(wildcards.threshold), input.gold_data, input.segmented_data)
         with open(output[0], 'w', encoding='UTF-8') as f_out:
             json.dump(results, f_out, ensure_ascii=False, indent=4)

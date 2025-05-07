@@ -1,15 +1,11 @@
 from collections import defaultdict
 import argparse
+import json
 import math
+import numpy as np
+
 from metrics import get_bin_precision, get_bin_recall, segments_to_binary
 
-parser = argparse.ArgumentParser(description="Run the IBM Model1 algorithm for extracting a morpheme-aligned score for subword tokens")
-parser.add_argument("--filename", type=str, required=True, help="Path to gold segmentation file")
-parser.add_argument("--test", type=str, required=False, help="Path to predicted segmentation file")
-parser.add_argument("--threshold", type=float, default=0.1, help="Probability threshold")
-parser.add_argument("--iterations", type=int, default=100, help="IBM iterations")
-
-args = parser.parse_args()
 
 class IBM1:
     def __init__(self, num_iterations=10):
@@ -21,7 +17,7 @@ class IBM1:
             count_st = defaultdict(lambda: defaultdict(float))
             total_s = defaultdict(float)
 
-            for full_word, tags, segments in data:
+            for _, tags, segments in data:
                 for tag in tags:  
                     norm_factor = sum(self.translation_probs[s][tag] for s in segments) + 1e-10  
 
@@ -51,64 +47,94 @@ def read_data(filename):
     
     return data
 
-def compute_score(data, em_segmenter, threshold=args.threshold):
-    word2score = defaultdict(list)
+
+def geometric_mean(numbers):
+    return np.exp(np.log(numbers).mean())
+
+
+def harmonic_mean(numbers):
+    return len(numbers) / np.sum(1.0 / np.array(numbers))
+
+
+def entropy(probabilities):
+    return -sum(p * math.log(p) for p in probabilities if p > 0)
+
+
+def compute_score(data, em_segmenter, threshold):
+    results = defaultdict(float)
     for word, tag, segmentation in data:
         for segment in segmentation:
             prob = em_segmenter.get_prob(segment, tag)
-            for scores in prob.values():
-                if scores > args.threshold:
-                    word2score[word].append(scores)
+            scores = [x for x in prob.values() if x > threshold]
+            if len(scores) > 0:
+                results['morpho-score-mean'] += sum(scores) / len(scores)
+                results['morpho-score-harmonic'] += harmonic_mean(scores)
+                results['morpho-score-geometric'] += geometric_mean(scores)
+                results['morpho-score-min'] += min(scores)
+                results['morpho-score-max'] += max(scores)
+                results['morpho-score-entropy'] += entropy(scores)
 
-    s =list()
-    g = list()
-    for word, scores in word2score.items():
-        word_score = math.prod(scores)
-        geo_mean = (math.pow(word_score, (1 / len(scores))))
-        s.append(word_score)
-        g.append(geo_mean)
-
-    total_s = sum(s)/ len(s)
-    total_g = sum(g)/ len(g)
+    for k in results:
+        results[k] /= len(data)
     
-    return total_g
+    return results
 
-em_segmenter = IBM1(num_iterations=args.iterations)
 
-gold_data = read_data(args.filename)
-em_segmenter.train(gold_data)
-gold_score = compute_score(gold_data, em_segmenter, args.threshold)
-print(f'Gold data morpho-score: {gold_score:.2f}')
+def evaluate_segmentations(iterations, threshold, gold_file, test_file):
+    em_segmenter = IBM1(num_iterations=iterations)
+    results = {}
 
-if args.test:
+    gold_data = read_data(gold_file)
+    em_segmenter.train(gold_data)
+    gold_scores = compute_score(gold_data, em_segmenter, threshold)
+    for k, val in gold_scores.items():
+        results[f"gold-{k}"] = val
 
-    test_data = read_data(args.test)
-    em_segmenter.train(test_data)
-    test_score = compute_score(test_data, em_segmenter, args.threshold)
-    print(f'Test data morpho-score: {test_score:.2f}')
+    if test_file is not None:
+        test_data = read_data(test_file)
+        em_segmenter.train(test_data)
+        test_scores = compute_score(test_data, em_segmenter, threshold)
+        for k, val in test_scores.items():
+            results[f"test-{k}"] = val
+        
+        precisions = []
+        recalls = []
+        f_scores = []
+        num_segments = []
+        
+        with open(gold_file, 'r', encoding='utf-8') as pred_file, \
+             open(test_file, 'r', encoding='utf-8') as gold_file:
+                for pred_line, gold_line in zip(pred_file, gold_file):
+                    pred_parts = pred_line.strip().split('\t')
+                    gold_parts = gold_line.strip().split('\t')
+
+                    pred_segments = pred_parts[2].split('|')
+                    gold_segments = gold_parts[2].split('|')
+
+                    pred_idx = segments_to_binary(pred_segments)
+                    gold_idx = segments_to_binary(gold_segments)
+
+                    precisions.append(get_bin_precision(gold_idx, pred_idx))
+                    recalls.append(get_bin_recall(gold_idx, pred_idx))
+                    f_scores.append(2 * (precisions[-1] * recalls[-1]) / (precisions[-1] + recalls[-1] + 1e-10))
+                    num_segments.append(len(pred_segments))
+
+        results["boundary_precision"] = np.mean(precisions)
+        results["boundary_recall"] = np.mean(recalls)
+        results["boundary_f_score"] = np.mean(f_scores)
+        results["avg_segments"] = np.mean(num_segments)
+
+    return results
     
-    precision = []
-    recall = []
-    
-    with open(args.filename, 'r', encoding='utf-8') as pred_file, \
-        open(args.test, 'r', encoding='utf-8') as gold_file:
-            for pred_line, gold_line in zip(pred_file, gold_file):
-                pred_parts = pred_line.strip().split('\t')
-                gold_parts = gold_line.strip().split('\t')
 
-                pred_segments = pred_parts[2].split('|')
-                gold_segments = gold_parts[2].split('|')
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run the IBM Model1 algorithm for extracting a morpheme-aligned score for subword tokens")
+    parser.add_argument("--filename", type=str, required=True, help="Path to gold segmentation file")
+    parser.add_argument("--test", type=str, required=False, help="Path to predicted segmentation file")
+    parser.add_argument("--threshold", type=float, default=0.1, help="Probability threshold")
+    parser.add_argument("--iterations", type=int, default=100, help="IBM iterations")
 
-                pred_idx = segments_to_binary(pred_segments)
-                gold_idx = segments_to_binary(gold_segments)
+    args = parser.parse_args()
 
-                precision.append(get_bin_precision(gold_idx, pred_idx))
-                recall.append(get_bin_recall(gold_idx, pred_idx))
-
-
-    avg_precision = (sum(precision)/len(precision))
-    avg_recall = (sum(recall)/len(recall))
-
-    print(f"Average Boundary Precision: {avg_precision:.2f}")
-    print(f"Average Boundary Recall: {avg_recall:.2f}")
-    
+    results = evaluate_segmentations(args.iterations, args.threshold, args.filename, args.test)
+    print(json.dumps(results, indent=4))

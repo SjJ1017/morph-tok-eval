@@ -4,8 +4,6 @@ import json
 import math
 import numpy as np
 
-from metrics import get_bin_precision, get_bin_recall, segments_to_binary
-
 
 class IBM1:
     def __init__(self, num_iterations=10):
@@ -80,6 +78,15 @@ def compute_score(data, em_segmenter, threshold):
     return results
 
 
+def boundary_positions(word_segments):
+    boundaries = set()
+    idx = 0
+    for segment in word_segments:  
+        idx += len(segment)
+        boundaries.add(idx)
+    return boundaries
+
+
 def evaluate_segmentations(iterations, threshold, gold_file, test_file):
     em_segmenter = IBM1(num_iterations=iterations)
     results = {}
@@ -113,11 +120,13 @@ def evaluate_segmentations(iterations, threshold, gold_file, test_file):
                     pred_segments = pred_parts[2].split('|')
                     gold_segments = gold_parts[2].split('|')
 
-                    pred_idx = segments_to_binary(pred_segments)
-                    gold_idx = segments_to_binary(gold_segments)
+                    pred_idx = boundary_positions(pred_segments)
+                    gold_idx = boundary_positions(gold_segments)
 
-                    precisions.append(get_bin_precision(gold_idx, pred_idx))
-                    recalls.append(get_bin_recall(gold_idx, pred_idx))
+                    true_positive = len(gold_idx.intersection(pred_idx))
+
+                    precisions.append(true_positive / (len(pred_idx) + 1e-10))
+                    recalls.append(true_positive / (len(gold_idx) + 1e-10))
                     f_scores.append(2 * (precisions[-1] * recalls[-1]) / (precisions[-1] + recalls[-1] + 1e-10))
                     num_segments.append(len(pred_segments))
 

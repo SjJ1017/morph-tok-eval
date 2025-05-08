@@ -33,7 +33,7 @@ PRE_TRAINED_TOKENIZERS = {
 }
 
 
-THRESHOLDS = [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5]
+THRESHOLDS = [0.01, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5]
 
 
 localrules: tokenize_unimorph_our_tokenizer, tokenize_unimorph_huggingface
@@ -239,7 +239,7 @@ rule compute_correlations:
     run:
         import pandas as pd
 
-        df = load_json_files_to_dataframe(input.our_tokenizers + input.pretrained_tokenizers)
+        df = load_json_files_to_dataframe(input.our_tokenizers) # + input.pretrained_tokenizers)
 
         # Identify columns that start with 'test-'
         test_columns = [col for col in df.columns if col.startswith('test-')]
@@ -258,7 +258,8 @@ rule compute_correlations:
         # Calculate correlations
         for test_col in test_columns:
             for other_col in other_columns:
-                correlation = df[test_col].corr(df[other_col])
+                # Computer Spearman correlation
+                correlation = df[test_col].corr(df[other_col], method='spearman')
                 correlation_df.at[test_col, other_col] = correlation
 
         # Save the correlation DataFrame to a text file

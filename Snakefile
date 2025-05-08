@@ -20,7 +20,7 @@ PRE_TRAINED_TOKENIZERS = {
     "xglm": "facebook/xglm-564M",
     "mt5": "google/mt5-base",
     "mbart": "facebook/mbart-large-50",
-    "m2m": "facebook/m2m100_418M",
+    #"m2m": "facebook/m2m100_418M",  # Does no support offset mapping
     "nllb": "facebook/nllb-200-1.3B",
     "mistral": "mistralai/Mistral-7B-v0.1",
     "llama2": "meta-llama/Llama-2-7b",
@@ -101,11 +101,33 @@ rule train_tokenizer:
         print(f"{wildcards.tokenizer_type} tokenizer with vocab size {wildcards.vocab_size}k saved to {output[0]}")
 
 
+def unicode_safe_tokenize(tokenizer, text):
+    # Get the encoding with offsets
+    encoding = tokenizer(text, add_special_tokens=False, return_offsets_mapping=True)
+    
+    offset_mapping = encoding["offset_mapping"]
+    # Fix the offset mapping, so it is non-overlapping and covers the whole string
+    for i in range(len(offset_mapping) - 1):
+        this_start, this_end = offset_mapping[i]
+        next_start, next_end = offset_mapping[i + 1]
+        if this_end != next_start:
+            offset_mapping[i + 1] = (this_end, next_end)
+
+    # Extract tokens directly from the original text using the offsets
+    original_tokens = [text[start:end] for start, end in offset_mapping]
+
+    return original_tokens #, standard_tokens
+
+
+
 def tokenize_unimorph(input_file, output_file, tokenizer):
     with open(input_file, encoding='UTF-8') as f_in, open(output_file, 'w', encoding='UTF-8') as f_out:
         for line in f_in:
             word, tag, segments = line.split("\t")
-            segments = '|'.join(tokenizer.tokenize(word))  
+            tokenized = unicode_safe_tokenize(tokenizer, word)
+            assert "".join(tokenized) == word, f"Tokenization mismatch: {word} != {' '.join(tokenized)}"
+            segments = '|'.join(tokenized)
+
             print(word, tag, segments, sep='\t', file=f_out)
 
 

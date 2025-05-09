@@ -11,12 +11,12 @@ def unimorph(data):
     word2features = defaultdict()
     with open (data) as file:
         for lines in file:
-           
-            lines = lines.strip().split('\t')
+            if lines.strip():
+                lines = lines.strip().split('\t')
             
-            form = lines[1] 
-            features = lines[2]
-            word2features[form] = features
+                form = lines[1] 
+                features = lines[2]
+                word2features[form] = features
     
     return word2features
 

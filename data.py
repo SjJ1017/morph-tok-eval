@@ -11,15 +11,11 @@ def unimorph(data):
     word2features = defaultdict()
     with open (data) as file:
         for lines in file:
-            lines = lines.split('\t')
-            
-            #lemma = lines[0]
-            form = lines[0]
            
-            features = lines[1]
-        
-            # segmentation = lines[2].strip().replace('|', ' ')
+            lines = lines.strip().split('\t')
             
+            form = lines[1] 
+            features = lines[2]
             word2features[form] = features
     
     return word2features
@@ -30,22 +26,16 @@ def unisegments(data):
         for lines in file:
             lines = lines.split('\t')
             form = lines[0]
-            segmentaion = lines[3].replace(' + ','|')
-            word2segments[form] = segmentaion
-    
+            segmentation = lines[3].replace(' + ','|')
+            if segmentation.strip(): 
+                word2segments[form] = segmentation
+           
     return word2segments
 
 
 features_dict = unimorph(args.features)
-
 segments_dict = unisegments(args.segments)
 
 for forms in features_dict.keys():
     if forms in segments_dict:
         print(forms, features_dict[forms], segments_dict[forms], sep = '\t')
-
-
-
-# for forms in features_dict.keys():
-#     if forms in segments_dict:
-#         print(forms, features_dict[forms], segments_dict[forms], sep = '\t')

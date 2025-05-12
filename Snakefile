@@ -68,20 +68,29 @@ rule train_tokenizer:
     output:
         "tokenizers/{lng}/{tokenizer_type}-{vocab_size}k.json"
     wildcard_constraints:
-        tokenizer_type="bpe|unigram"
+        tokenizer_type="bpe|unigram|wordpiece",
     resources:
         mem="16G",
         tasks=1,
         cpus_per_task=2,
     run:
         from tokenizers import Tokenizer
-        from tokenizers.models import BPE, Unigram
+        from tokenizers.models import BPE, Unigram, WordPiece
         from tokenizers.normalizers import NFD
         from tokenizers.pre_tokenizers import Whitespace
-        from tokenizers.trainers import BpeTrainer, UnigramTrainer
+        from tokenizers.trainers import BpeTrainer, UnigramTrainer, WordPieceTrainer
 
-        model_class = BPE if wildcards.tokenizer_type == "bpe" else Unigram
-        trainer_class = BpeTrainer if wildcards.tokenizer_type == "bpe" else UnigramTrainer
+        if wildcards.tokenizer_type == "bpe":
+            model_class = BPE
+            trainer_class = BpeTrainer
+        elif wildcards.tokenizer_type == "unigram":
+            model_class = Unigram
+            trainer_class = UnigramTrainer
+        elif wildcards.tokenizer_type == "wordpiece":
+            model_class = WordPiece
+            trainer_class = WordPieceTrainer
+        else:
+            raise ValueError(f"Unknown tokenizer type: {wildcards.tokenizer_type}")
 
         tokenizer = Tokenizer(model_class())
         

@@ -56,7 +56,7 @@ DATASETS = [
 THRESHOLDS = [0.01, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5]
 
 
-localrules: tokenize_unimorph_our_tokenizer, tokenize_unimorph_huggingface, character_tokenization, gold_tokenization, evaluate_segmentation, compute_correlations
+localrules: tokenize_unimorph_our_tokenizer, tokenize_unimorph_huggingface, character_tokenization, gold_tokenization, compute_correlations
 
 
 rule all:
@@ -238,6 +238,10 @@ rule evaluate_segmentation:
         segmented_data="segmented/{dataset}/{segmented_file}.tsv"
     output:
         "evaluated/{dataset}/{segmented_file}-{threshold}.json"
+    resources:
+        mem="4G",
+        tasks=1,
+        cpus_per_task=2,
     run:
         import json
         from align import evaluate_segmentations

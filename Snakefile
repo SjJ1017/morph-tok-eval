@@ -54,12 +54,12 @@ DATASETS = [
 THRESHOLDS = [0.01, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5]
 
 
-localrules: tokenize_unimorph_our_tokenizer, tokenize_unimorph_huggingface
+localrules: tokenize_unimorph_our_tokenizer, tokenize_unimorph_huggingface, character_tokenization, gold_tokenization, evaluate_segmentation, compute_correlations
 
 
 rule all:
     input:
-        expand("correlations/{lng}.txt", lng=LANGUAGES),
+        expand("correlations/{dataset}.txt", dataset=DATASETS),
 
 
 rule download_cc100:
@@ -111,18 +111,18 @@ rule train_tokenizer:
             raise ValueError(f"Unknown tokenizer type: {wildcards.tokenizer_type}")
 
         tokenizer = Tokenizer(model_class())
-        
+
         # Customize the tokenizer
         tokenizer.normalizer = NFD()
         tokenizer.pre_tokenizer = Whitespace()
-        
+
         # Initialize the trainer
         trainer = trainer_class(
             vocab_size=1000 * int(wildcards.vocab_size),
             min_frequency=2,
             special_tokens=["<unk>", "<pad>", "<s>", "</s>", "<mask>"]
         )
-        
+
         # Train the tokenizer
         tokenizer.train(files=input, trainer=trainer)
 
@@ -134,7 +134,7 @@ rule train_tokenizer:
 def unicode_safe_tokenize(tokenizer, text):
     # Get the encoding with offsets
     encoding = tokenizer(text, add_special_tokens=False, return_offsets_mapping=True)
-    
+
     offset_mapping = encoding["offset_mapping"]
     # Fix the offset mapping, so it is non-overlapping and covers the whole string
     for i in range(len(offset_mapping) - 1):
@@ -163,7 +163,7 @@ def tokenize_unimorph(input_file, output_file, tokenizer):
 
 rule tokenize_unimorph_our_tokenizer:
     input:
-        data="data/{lng}/{lng}.tsv",
+        data="data/morpho/{lng}-{dataset_type}.tsv",
         tokenizer="tokenizers/{lng}/{tokenizer_type}-{vocab_size}k.json"
     output:
         "segmented/{lng}-{dataset_type}/{tokenizer_type}-{vocab_size}k.tsv"
@@ -206,6 +206,30 @@ rule tokenize_unimorph_huggingface:
         )
 
 
+rule character_tokenization:
+    input:
+        data="data/morpho/{dataset}.tsv"
+    output:
+        "segmented/{dataset}/char.tsv"
+    run:
+        with open(input.data, encoding='UTF-8') as f_in, open(output[0], 'w', encoding='UTF-8') as f_out:
+            for line in f_in:
+                word, tag, segments = line.split("\t")
+                segments = '|'.join(list(word))
+                print(word, tag, segments, sep='\t', file=f_out)
+
+
+rule gold_tokenization:
+    input:
+        data="data/morpho/{dataset}.tsv"
+    output:
+        "segmented/{dataset}/gold.tsv"
+    shell:
+        """
+        mkdir -p segmented/{wildcards.dataset}
+        cp {input.data} {output}
+        """
+
 rule evaluate_segmentation:
     input:
         gold_data="data/morpho/{dataset}.tsv",
@@ -229,10 +253,10 @@ def load_json_files_to_dataframe(file_list):
 
     # Dictionary to store data grouped by tokenizer
     tokenizer_data = defaultdict(dict)
-    
+
     # Pattern to extract tokenizer and threshold from filename
     pattern = r"(.*)-(\d+\.\d+)\.json"
-    
+
     # Iterate through all JSON files in the directory
     for filename in file_list:
         # Extract tokenizer and threshold from filename
@@ -240,14 +264,14 @@ def load_json_files_to_dataframe(file_list):
         if match:
             tokenizer_name = match.group(1)
             threshold = float(match.group(2))
-            
+
             # Load the JSON content
             with open(filename, 'r') as file:
                 json_content = json.load(file)
-            
+
             # Process the JSON content according to requirements
             processed_content = {}
-            
+
             for key, value in json_content.items():
                 if key.startswith('gold'):
                     # Skip items starting with 'gold'
@@ -260,48 +284,52 @@ def load_json_files_to_dataframe(file_list):
                     # For other items, keep them as is
                     processed_content[key] = value
             processed_content['threshold'] = threshold
-            
+
             # Update the tokenizer's data
             tokenizer_data[tokenizer_name].update(processed_content)
-    
+
     # Convert the processed data to a DataFrame
     rows = []
     for tokenizer_name, content in tokenizer_data.items():
         row = {'tokenizer': tokenizer_name}
         row.update(content)
         rows.append(row)
-    
+
     # Create DataFrame
     df = pd.DataFrame(rows)
-    
+
     # Ensure tokenizer is the first column
     if not df.empty:
         columns = df.columns.tolist()
         columns.remove('tokenizer')
         df = df[['tokenizer'] + columns]
-    
+
     return df
 
 
 rule compute_correlations:
     input:
-        our_tokenizers=expand("evaluated/{{lng}}/{tok_type}-{vocab_size}k-{threshold}.json",
-            vocab_size=VOCAB_SIZES, tok_type=["bpe", "unigram"], threshold=THRESHOLDS),
-        pretrained_tokenizers=expand("evaluated/{{lng}}/pretrained-{tokenizer}-{threshold}.json",
+        gold_tokenizer=expand("evaluated/{{dataset}}/gold-{threshold}.json", threshold=THRESHOLDS),
+        char_tokenizer=expand("evaluated/{{dataset}}/char-{threshold}.json", threshold=THRESHOLDS),
+        our_tokenizers=expand("evaluated/{{dataset}}/{tok_type}-{vocab_size}k-{threshold}.json",
+            vocab_size=VOCAB_SIZES, tok_type=["bpe", "unigram", "wordpiece"], threshold=THRESHOLDS),
+        pretrained_tokenizers=expand("evaluated/{{dataset}}/pretrained-{tokenizer}-{threshold}.json",
             tokenizer=PRE_TRAINED_TOKENIZERS.keys(), threshold=THRESHOLDS),
     output:
-        "correlations/{lng}.txt"
+        "correlations/{dataset}.txt"
     run:
         import pandas as pd
 
-        df = load_json_files_to_dataframe(input.our_tokenizers) #+ input.pretrained_tokenizers)
+        df = load_json_files_to_dataframe(
+            [input.gold_tokenizer, input.char_tokenizer] +
+            input.our_tokenizers) #+ input.pretrained_tokenizers)
 
         # Identify columns that start with 'test-'
         test_columns = ["avg_segments"] + [col for col in df.columns if col.startswith('test-')]
-        
+
         # Identify other columns (excluding 'tokenizer' which is likely non-numeric)
         other_columns = ["boundary_precision", "boundary_recall", "boundary_f_score"]
-        
+
         # Create an empty DataFrame to store correlations
         correlation_df = pd.DataFrame(
             index=test_columns,

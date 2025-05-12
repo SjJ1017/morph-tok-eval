@@ -1,5 +1,5 @@
 
-LANGUAGES = ["ces", "fin", "hye", "kan", "deu", "eng", "hbs", "nld"]
+LANGUAGES = ["ces", "fin", "hye", "kan", "deu", "eng", "hbs", "nld", "slk"]
 
 LNG_CODES = {
     "ces": "cs", # Czech
@@ -10,6 +10,7 @@ LNG_CODES = {
     "eng": "en", # English
     "hbs": "hr", # Serbo-Croatian
     "nld": "nl", # Dutch
+    "slk": "sk", # Slovak
 }
 
 
@@ -48,6 +49,7 @@ DATASETS = [
 	"hye-unimorph2uniseg",
 	"kan-unimorph2uniseg_KCIS",
 	"nld-unimorph2uniseg_CELEX",
+    "slk-unimorph2olostiak",
 ]
 
 

@@ -227,6 +227,7 @@ def load_json_files_to_dataframe(file_list):
                 else:
                     # For other items, keep them as is
                     processed_content[key] = value
+            processed_content['threshold'] = threshold
             
             # Update the tokenizer's data
             tokenizer_data[tokenizer_name].update(processed_content)
@@ -261,14 +262,13 @@ rule compute_correlations:
     run:
         import pandas as pd
 
-        df = load_json_files_to_dataframe(input.our_tokenizers) # + input.pretrained_tokenizers)
+        df = load_json_files_to_dataframe(input.our_tokenizers) #+ input.pretrained_tokenizers)
 
         # Identify columns that start with 'test-'
-        test_columns = [col for col in df.columns if col.startswith('test-')]
+        test_columns = ["avg_segments"] + [col for col in df.columns if col.startswith('test-')]
         
         # Identify other columns (excluding 'tokenizer' which is likely non-numeric)
-        other_columns = [col for col in df.columns 
-                        if not col.startswith('test-') and col != 'tokenizer']
+        other_columns = ["boundary_precision", "boundary_recall", "boundary_f_score"]
         
         # Create an empty DataFrame to store correlations
         correlation_df = pd.DataFrame(

@@ -49,13 +49,16 @@ rule download_cc100:
         "data/cc100/{lng}.txt"
     params:
         lng = lambda wildcards: LNG_CODES[wildcards.lng],
+    resources:
+        mem="16G",
+        tasks=1,
+        cpus_per_task=8,
     shell:
         """
         mkdir -p data/cc100
         wget https://data.statmt.org/cc-100/{params.lng}.txt.xz -O data/cc100/{wildcards.lng}.tmp.xz
-        unxz data/cc100/{wildcards.lng}.tmp.xz
-        head -n 1M data/cc100/{wildcards.lng}.tmp > {output}
-        rm data/cc100/{wildcards.lng}.tmp
+        xzcat data/cc100/{wildcards.lng}.tmp.xz | head -n 1M > data/cc100/{wildcards.lng}.txt
+        rm data/cc100/{wildcards.lng}.tmp.xz
         """
 
 

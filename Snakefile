@@ -1,11 +1,15 @@
 
-LANGUAGES = ["ces", "fin", "hye", "kan"]
+LANGUAGES = ["ces", "fin", "hye", "kan", "deu", "eng", "hbs", "nld"]
 
 LNG_CODES = {
     "ces": "cs", # Czech
     "fin": "fi", # Finnish
     "hye": "hy", # Armenian
     "kan": "kn", # Kannada
+	"deu": "de", # German
+    "eng": "en", # English
+    "hbs": "hr", # Serbo-Croatian
+    "nld": "nl", # Dutch
 }
 
 
@@ -31,6 +35,20 @@ PRE_TRAINED_TOKENIZERS = {
     "qwen3": "Qwen/Qwen3-0.6B",
     "falcon": "tiiuae/falcon-7b-instruct",
 }
+
+
+DATASETS = [
+	"ces-unimorph2uniseg_derinet",
+	"ces-unimorph",
+	"deu-unimorph2uniseg_CELEX",
+	"eng-unimorph2uniseg_CELEX",
+	"fin-unimorph2uniseg_morphynet",
+	"fin-unimorph",
+	"hbs-unimorph2uniseg_MorphyNet",
+	"hye-unimorph2uniseg",
+	"kan-unimorph2uniseg_KCIS",
+	"nld-unimorph2uniseg_CELEX",
+]
 
 
 THRESHOLDS = [0.01, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5]
@@ -148,7 +166,9 @@ rule tokenize_unimorph_our_tokenizer:
         data="data/{lng}/{lng}.tsv",
         tokenizer="tokenizers/{lng}/{tokenizer_type}-{vocab_size}k.json"
     output:
-        "segmented/{lng}/{tokenizer_type}-{vocab_size}k.tsv"
+        "segmented/{lng}-{dataset_type}/{tokenizer_type}-{vocab_size}k.tsv"
+    wildcard_constraints:
+        lng="|".join(LNG_CODES.keys()),
     run:
         from transformers import PreTrainedTokenizerFast
         tokenizer = PreTrainedTokenizerFast(
@@ -169,9 +189,9 @@ rule tokenize_unimorph_our_tokenizer:
 
 rule tokenize_unimorph_huggingface:
     input:
-        data="data/{lng}/{lng}.tsv"
+        data="data/morpho/{lng}-{dataset_type}.tsv"
     output:
-        "segmented/{lng}/pretrained-{tokenizer}.tsv"
+        "segmented/{lng}-{dataset_type}/pretrained-{tokenizer}.tsv"
     wildcard_constraints:
         tokenizer="|".join(PRE_TRAINED_TOKENIZERS.keys())
     run:
@@ -188,10 +208,10 @@ rule tokenize_unimorph_huggingface:
 
 rule evaluate_segmentation:
     input:
-        gold_data="data/{lng}/{lng}.tsv",
-        segmented_data="segmented/{lng}/{segmented_file}.tsv"
+        gold_data="data/morpho/{dataset}.tsv",
+        segmented_data="segmented/{dataset}/{segmented_file}.tsv"
     output:
-        "evaluated/{lng}/{segmented_file}-{threshold}.json"
+        "evaluated/{dataset}/{segmented_file}-{threshold}.json"
     run:
         import json
         from align import evaluate_segmentations

@@ -319,15 +319,15 @@ rule compute_correlations:
         char_tokenizer=expand("evaluated/{{dataset}}/char-{threshold}.json", threshold=THRESHOLDS),
         our_tokenizers=expand("evaluated/{{dataset}}/{tok_type}-{vocab_size}k-{threshold}.json",
             vocab_size=VOCAB_SIZES, tok_type=["bpe", "unigram", "wordpiece"], threshold=THRESHOLDS),
-        pretrained_tokenizers=expand("evaluated/{{dataset}}/pretrained-{tokenizer}-{threshold}.json",
-            tokenizer=PRE_TRAINED_TOKENIZERS.keys(), threshold=THRESHOLDS),
+        #pretrained_tokenizers=expand("evaluated/{{dataset}}/pretrained-{tokenizer}-{threshold}.json",
+        #    tokenizer=PRE_TRAINED_TOKENIZERS.keys(), threshold=THRESHOLDS),
     output:
         "correlations/{dataset}.txt"
     run:
         import pandas as pd
 
         df = load_json_files_to_dataframe(
-            [input.gold_tokenizer, input.char_tokenizer] +
+            input.gold_tokenizer + input.char_tokenizer +
             input.our_tokenizers) #+ input.pretrained_tokenizers)
 
         # Identify columns that start with 'test-'

@@ -1,9 +1,17 @@
 from collections import defaultdict
 import argparse
 import json
-import math
+import logging
 import re
 import numpy as np
+
+
+# Logging with date and time
+logging.basicConfig(
+    format='%(asctime)s - %(message)s',
+    level=logging.INFO,
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 
 class IBM1:
@@ -77,6 +85,8 @@ def compute_score(data, em_segmenter, threshold):
             scores = [x for x in prob.values() if x > threshold]
 
             if len(scores) > 0:
+                results[f'morpho-score-sum-{suffix}'] += sum(scores)
+                results[f'morpho-score-logsum-{suffix}'] += sum(np.log(scores))
                 results[f'morpho-score-mean-{suffix}'] += sum(scores) / len(scores)
                 results[f'morpho-score-harmonic-{suffix}'] += harmonic_mean(scores)
                 results[f'morpho-score-geometric-{suffix}'] += geometric_mean(scores)
@@ -98,36 +108,48 @@ def boundary_positions(word_segments):
     return boundaries
 
 
-def evaluate_segmentations(iterations, threshold, gold_file, test_file):
+def evaluate_segmentations(gold_file, test_file, thresholds, iterations, skip_gold_train=False):
     results = {}
 
     gold_data = read_data(gold_file)
+    if not skip_gold_train:
+        logging.info("Training IBM Model 1 on gold data with full tags")
+        em_segmenter_full = IBM1(num_iterations=iterations)
+        em_segmenter_full.train(gold_data)
+        logging.info("Computing scores for gold data with full tags")
+        for threshold in thresholds:
+            gold_scores_full = compute_score(gold_data, em_segmenter_full, threshold)
+            for k, val in gold_scores_full.items():
+                results[f"gold-{k}-{threshold}"] = val
 
-    em_segmenter_full = IBM1(num_iterations=iterations)
-    em_segmenter_full.train(gold_data)
-    gold_scores_full = compute_score(gold_data, em_segmenter_full, threshold)
-    for k, val in gold_scores_full.items():
-        results[f"gold-{k}"] = val
-
-    em_segmenter_split = IBM1(num_iterations=iterations, split_tags=True)
-    em_segmenter_split.train(gold_data)
-    gold_scores_split = compute_score(gold_data, em_segmenter_split, threshold)
-    for k, val in gold_scores_split.items():
-        results[f"gold-{k}"] = val
+        logging.info("Training IBM Model 1 on gold data with split tags")
+        em_segmenter_split = IBM1(num_iterations=iterations, split_tags=True)
+        em_segmenter_split.train(gold_data)
+        logging.info("Computing scores for gold data with split tags")
+        for threshold in thresholds:
+            gold_scores_split = compute_score(gold_data, em_segmenter_split, threshold)
+            for k, val in gold_scores_split.items():
+                results[f"gold-{k}-{threshold}"] = val
 
     if test_file is not None:
         test_data = read_data(test_file)
+        logging.info("Training IBM Model 1 on test data with full tags")
         em_segmenter_full = IBM1(num_iterations=iterations)
         em_segmenter_full.train(test_data)
-        test_scores = compute_score(test_data, em_segmenter_full, threshold)
-        for k, val in test_scores.items():
-            results[f"test-{k}"] = val
+        logging.info("Computing scores for test data with full tags")
+        for threshold in thresholds:
+            test_scores = compute_score(test_data, em_segmenter_full, threshold)
+            for k, val in test_scores.items():
+                results[f"test-{k}-{threshold}"] = val
 
+        logging.info("Training IBM Model 1 on test data with split tags")
         em_segmenter_split = IBM1(num_iterations=iterations, split_tags=True)
         em_segmenter_split.train(test_data)
-        test_scores = compute_score(test_data, em_segmenter_split, threshold)
-        for k, val in test_scores.items():
-            results[f"test-{k}"] = val
+        logging.info("Computing scores for test data with split tags")
+        for threshold in thresholds:
+            test_scores = compute_score(test_data, em_segmenter_split, threshold)
+            for k, val in test_scores.items():
+                results[f"test-{k}-{threshold}"] = val
         
         precisions = []
         recalls = []
@@ -135,6 +157,7 @@ def evaluate_segmentations(iterations, threshold, gold_file, test_file):
         num_segments = []
         total_characters = 0
         
+        logging.info("Evaluating segmentations")
         with open(test_file, 'r', encoding='utf-8') as test_f, \
              open(gold_file, 'r', encoding='utf-8') as gold_f:
                 for pred_line, gold_line in zip(test_f, gold_f):
@@ -163,6 +186,7 @@ def evaluate_segmentations(iterations, threshold, gold_file, test_file):
         results["avg_segments"] = np.mean(num_segments)
         results["chars_per_segment"] = total_characters / np.sum(num_segments)
 
+    logging.info("Done.")
     return results
     
 
@@ -170,10 +194,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the IBM Model1 algorithm for extracting a morpheme-aligned score for subword tokens")
     parser.add_argument("--filename", type=str, required=True, help="Path to gold segmentation file")
     parser.add_argument("--test", type=str, required=False, help="Path to predicted segmentation file")
-    parser.add_argument("--threshold", type=float, default=0.1, help="Probability threshold")
+    parser.add_argument("--thresholds", nargs="+", type=float, default=[0.1], help="Probability thresholds")
     parser.add_argument("--iterations", type=int, default=100, help="IBM iterations")
 
     args = parser.parse_args()
 
-    results = evaluate_segmentations(args.iterations, args.threshold, args.filename, args.test)
+    results = evaluate_segmentations(args.filename, args.test, args.iterations, args.thresholds)
     print(json.dumps(results, indent=4))

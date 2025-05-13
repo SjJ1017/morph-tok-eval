@@ -237,7 +237,7 @@ rule evaluate_segmentation:
         gold_data="data/morpho/{dataset}.tsv",
         segmented_data="segmented/{dataset}/{segmented_file}.tsv"
     output:
-        "evaluated/{dataset}/{segmented_file}-{threshold}.json"
+        "evaluated/{dataset}/{segmented_file}.json"
     resources:
         mem="4G",
         tasks=1,
@@ -246,7 +246,7 @@ rule evaluate_segmentation:
         import json
         from align import evaluate_segmentations
         results = evaluate_segmentations(
-            10, float(wildcards.threshold), input.gold_data, input.segmented_data)
+            input.gold_data, input.segmented_data, THRESHOLDS, 10, skip_gold_train=True)
         with open(output[0], 'w', encoding='UTF-8') as f_out:
             json.dump(results, f_out, ensure_ascii=False, indent=4)
 
@@ -260,39 +260,20 @@ def load_json_files_to_dataframe(file_list):
     # Dictionary to store data grouped by tokenizer
     tokenizer_data = defaultdict(dict)
 
-    # Pattern to extract tokenizer and threshold from filename
-    pattern = r"(.*)-(\d+\.\d+)\.json"
-
     # Iterate through all JSON files in the directory
     for filename in file_list:
-        # Extract tokenizer and threshold from filename
-        match = re.match(pattern, filename)
-        if match:
-            tokenizer_name = match.group(1)
-            threshold = float(match.group(2))
+        # Load the JSON content
+        with open(filename, 'r') as file:
+            json_content = json.load(file)
 
-            # Load the JSON content
-            with open(filename, 'r') as file:
-                json_content = json.load(file)
+        # String .json from the filename
+        tokenizer_name = re.sub(r"^evaluated/|\.json$", "", filename)
 
-            # Process the JSON content according to requirements
-            processed_content = {}
+        # Throw away stuff starting with 'gold'
+        json_content = {k: v for k, v in json_content.items() if not k.startswith('gold')}
 
-            for key, value in json_content.items():
-                if key.startswith('gold'):
-                    # Skip items starting with 'gold'
-                    continue
-                elif key.startswith('test'):
-                    # For 'test' items, append the threshold
-                    new_key = f"{key}_{threshold}"
-                    processed_content[new_key] = value
-                else:
-                    # For other items, keep them as is
-                    processed_content[key] = value
-            processed_content['threshold'] = threshold
-
-            # Update the tokenizer's data
-            tokenizer_data[tokenizer_name].update(processed_content)
+        # Update the tokenizer's data
+        tokenizer_data[tokenizer_name] = json_content
 
     # Convert the processed data to a DataFrame
     rows = []
@@ -315,10 +296,10 @@ def load_json_files_to_dataframe(file_list):
 
 rule compute_correlations:
     input:
-        gold_tokenizer=expand("evaluated/{{dataset}}/gold-{threshold}.json", threshold=THRESHOLDS),
-        char_tokenizer=expand("evaluated/{{dataset}}/char-{threshold}.json", threshold=THRESHOLDS),
-        our_tokenizers=expand("evaluated/{{dataset}}/{tok_type}-{vocab_size}k-{threshold}.json",
-            vocab_size=VOCAB_SIZES, tok_type=["bpe", "unigram", "wordpiece"], threshold=THRESHOLDS),
+        gold_tokenizer="evaluated/{dataset}/gold.json",
+        char_tokenizer="evaluated/{dataset}/char.json",
+        our_tokenizers=expand("evaluated/{{dataset}}/{tok_type}-{vocab_size}k.json",
+            vocab_size=VOCAB_SIZES, tok_type=["bpe", "unigram", "wordpiece"]),
         #pretrained_tokenizers=expand("evaluated/{{dataset}}/pretrained-{tokenizer}-{threshold}.json",
         #    tokenizer=PRE_TRAINED_TOKENIZERS.keys(), threshold=THRESHOLDS),
     output:
@@ -327,7 +308,7 @@ rule compute_correlations:
         import pandas as pd
 
         df = load_json_files_to_dataframe(
-            input.gold_tokenizer + input.char_tokenizer +
+            [input.gold_tokenizer, input.char_tokenizer] +
             input.our_tokenizers) #+ input.pretrained_tokenizers)
 
         # Identify columns that start with 'test-'

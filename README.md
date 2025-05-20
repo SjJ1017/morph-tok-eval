@@ -11,7 +11,7 @@ You can run the all the experiments (including downloading CC100 data and
 training the tokenizers) by running:
 
 ```bash
-snamekame --executor local --cores all
+snakemake --executor local --cores all
 ```
 
 This will run all computations locally while using all available CPU cores.

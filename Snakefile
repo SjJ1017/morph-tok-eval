@@ -62,6 +62,10 @@ localrules: tokenize_unimorph_our_tokenizer, tokenize_unimorph_huggingface, char
 rule all:
     input:
         expand("correlations/{dataset}.txt", dataset=DATASETS),
+        #expand("pos_tagging/{lng}/{tokenizer_type}-{vocab_size}k.tsv",
+        #    lng=[l for l in LANGUAGES if l != "kan"],
+        #    tokenizer_type=["bpe", "unigram", "wordpiece"],
+        #    vocab_size=VOCAB_SIZES),
 
 
 rule download_cc100:
@@ -312,7 +316,7 @@ rule compute_correlations:
             input.our_tokenizers) #+ input.pretrained_tokenizers)
 
         # Identify columns that start with 'test-'
-        test_columns = ["avg_segments"] + [col for col in df.columns if col.startswith('test-')]
+        test_columns = ["avg_segments", "segments_ratio"] + [col for col in df.columns if col.startswith('test-')]
 
         # Identify other columns (excluding 'tokenizer' which is likely non-numeric)
         other_columns = ["boundary_precision", "boundary_recall", "boundary_f_score"]
@@ -334,3 +338,35 @@ rule compute_correlations:
         # Save the correlation DataFrame to a text file
         correlation_df.to_csv(output[0], sep='\t', index=True, header=True)
         print(f"Correlations saved to {output[0]}")
+
+
+rule train_pos_tagger:
+    input:
+        tokenizer="tokenizers/{lng}/{tokenizer_type}-{vocab_size}k.json",
+    output:
+        "pos_tagging/{lng}/{tokenizer_type}-{vocab_size}k.tsv"
+    resources:
+        mem="16G",
+        tasks=1,
+        cpus_per_task=4,
+        slurm_partition="gpu-ms,gpu-troja",
+        constraint="gpuram16G|gpuram24G",
+        slurm_extra="--gres=gpu:1"
+    run:
+        from pos_tagger import train_pos_tagger
+        import json
+
+        accuracies = []
+        for i in range(5):
+            accuracy = train_pos_tagger(
+                wildcards.lng, tokenizer_type="subwords",
+                subword_model=input.tokenizer,
+                seed=1348 + i)
+            accuracies.append(accuracy)
+
+        avg_accuracy = sum(accuracies) / len(accuracies)
+        with open(output[0], 'w', encoding='UTF-8') as f_out:
+            json.dump({
+                    "accuracies": accuracies,
+                    "avg_accuracy": avg_accuracy},
+                f_out, ensure_ascii=False, indent=4)

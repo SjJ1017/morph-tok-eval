@@ -1,0 +1,3 @@
+[submodule "legros"]
+	path = legros
+	url = https://github.com/ufal/legros

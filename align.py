@@ -155,6 +155,7 @@ def evaluate_segmentations(gold_file, test_file, thresholds, iterations, skip_go
         recalls = []
         f_scores = []
         num_segments = []
+        num_segments_ratio = []
         total_characters = 0
         
         logging.info("Evaluating segmentations")
@@ -179,16 +180,18 @@ def evaluate_segmentations(gold_file, test_file, thresholds, iterations, skip_go
                     recalls.append(true_positive / (len(gold_idx) + 1e-10))
                     f_scores.append(2 * (precisions[-1] * recalls[-1]) / (precisions[-1] + recalls[-1] + 1e-10))
                     num_segments.append(len(pred_segments))
+                    num_segments_ratio.append(len(pred_segments) / len(gold_segments))
 
         results["boundary_precision"] = np.mean(precisions)
         results["boundary_recall"] = np.mean(recalls)
         results["boundary_f_score"] = np.mean(f_scores)
         results["avg_segments"] = np.mean(num_segments)
         results["chars_per_segment"] = total_characters / np.sum(num_segments)
+        results["segments_ratio"] = np.mean(num_segments_ratio)
 
     logging.info("Done.")
     return results
-    
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run the IBM Model1 algorithm for extracting a morpheme-aligned score for subword tokens")

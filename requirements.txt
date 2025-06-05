@@ -6,3 +6,4 @@ transformers
 protobuf
 pandas
 scipy
+sacremoses

@@ -10,12 +10,19 @@ import logging
 import os
 import pickle
 import random
+import sys
 
 import torch
 import torch.optim as optim
 import torch.nn as nn
 from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 from transformers import PreTrainedTokenizerFast
+from gensim.models.fasttext import FastText
+import numpy as np
+
+# Add Legros Python path and import Legros modules
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'legros', 'python'))
+from legros.vocab import Vocab
 
 # Set enviroment variable TOKENIZERS_PARALLELISM
 os.environ["TOKENIZERS_PARALLELISM"] = "true"
@@ -124,6 +131,71 @@ def charachter_closure(word: str) -> List[str]:
     return list(word)
 
 
+def legros_closure(
+        subwords_file: str,
+        subword_embeddings_file: str,
+        fasttext_model_file: str) -> callable:
+    """Create a Legros tokenizer segmentation function."""
+    
+    # Load vocabulary
+    with open(subwords_file, 'r', encoding='utf-8') as f:
+        vocab_list = [line.strip() for line in f]
+    vocab = Vocab(vocab_list)
+    
+    # Load subword embeddings (text format with space-separated values)
+    subword_embeddings = []
+    with open(subword_embeddings_file, 'r', encoding='utf-8') as f:
+        for line in f:
+            embedding = [float(x) for x in line.strip().split()]
+            subword_embeddings.append(embedding)
+    subword_embeddings = np.array(subword_embeddings)
+    
+    # Load FastText model
+    fasttext_model = FastText.load(fasttext_model_file)
+    
+    # Create subword to index mapping
+    subwrd2idx = {subword: idx for idx, subword in enumerate(vocab_list)}
+    
+    def legros_segment(word):
+        """Segment a word using Legros tokenizer."""
+        try:
+            from legros.segment_vocab_with_subword_embeddings import try_segment
+            
+            # Get word vector from FastText model
+            try:
+                word_vector = fasttext_model.wv[word]
+            except KeyError:
+                # If word not in vocabulary, use mean of all vectors as fallback
+                word_vector = fasttext_model.wv.vectors.mean(0)
+            
+            # Get segmentation using Legros
+            segmentations = try_segment(
+                word,
+                word_vector,  # Pass the vector directly instead of the model
+                subwrd2idx,
+                subword_embeddings,
+                inference_mode="sum",
+                sample=False,
+                is_bert_wordpiece=False,
+                exclude_subwords=None
+            )
+            
+            if segmentations:
+                # Get the best segmentation (first one)
+                segmentation_str, _ = segmentations[0]
+                segments = segmentation_str.split()
+                return segments
+            else:
+                # Fallback to character-level segmentation
+                return list(word)
+                
+        except Exception as e:
+            logging.warning(f"Legros segmentation failed for word '{word}': {e}")
+            return list(word)  # Fallback to character-level
+    
+    return legros_segment
+
+
 def collate_fn(batch: List[Tuple[torch.Tensor, torch.Tensor]]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     tokens, tags = zip(*batch)
     lens = torch.tensor([len(token) for token in tokens])
@@ -189,6 +261,9 @@ def train_pos_tagger(
         lang: str,
         tokenizer_type: str,
         subword_model: str=None,
+        legros_subwords: str=None,
+        legros_embeddings: str=None,
+        legros_fasttext: str=None,
         max_steps: int=3200,
         embedding_dim: int=300,
         hidden_dim: int=600,
@@ -229,6 +304,10 @@ def train_pos_tagger(
             mask_token="<mask>"
         )
         segment_fn = transformers_closure(tokenizer)
+    elif tokenizer_type == "legros":
+        if not all([legros_subwords, legros_embeddings, legros_fasttext]):
+            raise ValueError("Legros tokenizer requires subwords, embeddings, and fasttext files")
+        segment_fn = legros_closure(legros_subwords, legros_embeddings, legros_fasttext)
     else:
         raise ValueError(f"Unknown subword method: {tokenizer_type}")
 
@@ -258,7 +337,8 @@ def train_pos_tagger(
     optimizer = optim.Adam(model.parameters(), lr=lr)
 
     # Random file name for saving the model
-    filename = f"{lang}_{tokenizer_type}_{hashlib.md5((subword_model + str(seed)).encode('utf-8')).hexdigest()}.pt"
+    model_identifier = subword_model or f"{tokenizer_type}_{legros_subwords or ''}"
+    filename = f"{lang}_{tokenizer_type}_{hashlib.md5((model_identifier + str(seed)).encode('utf-8')).hexdigest()}.pt"
 
     logging.info("Training model.")
     step = 0
@@ -345,8 +425,11 @@ def train_pos_tagger(
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(__doc__)
     parser.add_argument('lang', help='language code')
-    parser.add_argument('--tokenizer-type', type=str, default="words", help='subword tokenization', choices=["subwords", "char"])
+    parser.add_argument('--tokenizer-type', type=str, default="words", help='subword tokenization', choices=["subwords", "char", "legros"])
     parser.add_argument('--subword-model', type=str, default=None, help='subword model')
+    parser.add_argument('--legros-subwords', type=str, default=None, help='Legros subwords file')
+    parser.add_argument('--legros-embeddings', type=str, default=None, help='Legros subword embeddings file')
+    parser.add_argument('--legros-fasttext', type=str, default=None, help='Legros FastText model file')
     parser.add_argument('--max-steps', type=int, default=3200, help='max steps')
     parser.add_argument('--batch-size', type=int, default=256, help='batch size')
     parser.add_argument('--embedding-dim', type=int, default=300, help='embedding dimension')
@@ -362,6 +445,9 @@ if __name__ == '__main__':
     train_pos_tagger(
         args.lang, args.tokenizer_type,
         subword_model=args.subword_model,
+        legros_subwords=args.legros_subwords,
+        legros_embeddings=args.legros_embeddings,
+        legros_fasttext=args.legros_fasttext,
         max_steps=args.max_steps,
         embedding_dim=args.embedding_dim,
         hidden_dim=args.hidden_dim,

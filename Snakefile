@@ -1,4 +1,3 @@
-
 LANGUAGES = ["ces", "fin", "hye", "kan", "deu", "eng", "hbs", "nld", "slk"]
 
 LNG_CODES = {
@@ -62,10 +61,11 @@ localrules: tokenize_unimorph_our_tokenizer, tokenize_unimorph_huggingface, char
 rule all:
     input:
         expand("correlations/{dataset}.txt", dataset=DATASETS),
-        #expand("pos_tagging/{lng}/{tokenizer_type}-{vocab_size}k.tsv",
-        #    lng=[l for l in LANGUAGES if l != "kan"],
-        #    tokenizer_type=["bpe", "unigram", "wordpiece"],
-        #    vocab_size=VOCAB_SIZES),
+        expand("pos_tagging/{lng}/{tokenizer_prefix}{tokenizer_type}-{vocab_size}k.tsv",
+            lng=[l for l in LANGUAGES if l != "kan"],
+            tokenizer_type=["bpe", "unigram", "wordpiece"],
+            tokenizer_prefix=["", "legros-"],
+            vocab_size=VOCAB_SIZES),
 
 
 rule download_cc100:
@@ -306,8 +306,8 @@ rule compute_correlations:
         char_tokenizer="evaluated/{dataset}/char.json",
         our_tokenizers=expand("evaluated/{{dataset}}/{prefix}{tok_type}-{vocab_size}k.json",
             vocab_size=VOCAB_SIZES, tok_type=["bpe", "unigram", "wordpiece"], prefix=["", "legros-"]),
-        #pretrained_tokenizers=expand("evaluated/{{dataset}}/pretrained-{tokenizer}-{threshold}.json",
-        #    tokenizer=PRE_TRAINED_TOKENIZERS.keys(), threshold=THRESHOLDS),
+        #pretrained_tokenizers=expand("evaluated/{{dataset}}/pretrained-{tokenizer}.json",
+        #    tokenizer=PRE_TRAINED_TOKENIZERS.keys()),
     output:
         "correlations/{dataset}.txt"
     run:
@@ -363,6 +363,42 @@ rule train_pos_tagger:
             accuracy = train_pos_tagger(
                 wildcards.lng, tokenizer_type="subwords",
                 subword_model=input.tokenizer,
+                seed=1348 + i)
+            accuracies.append(accuracy)
+
+        avg_accuracy = sum(accuracies) / len(accuracies)
+        with open(output[0], 'w', encoding='UTF-8') as f_out:
+            json.dump({
+                    "accuracies": accuracies,
+                    "avg_accuracy": avg_accuracy},
+                f_out, ensure_ascii=False, indent=4)
+
+
+rule train_pos_tagger_legros:
+    input:
+        subwords="tokenizers/{lng}/legros-{tokenizer_type}-{vocab_size}k/subwords.19",
+        embeddings="tokenizers/{lng}/legros-{tokenizer_type}-{vocab_size}k/subword_embeddings.19",
+        fasttext="data/fasttext/{lng}/fasttext",
+    output:
+        "pos_tagging/{lng}/legros-{tokenizer_type}-{vocab_size}k.tsv"
+    resources:
+        mem="16G",
+        tasks=1,
+        cpus_per_task=4,
+        slurm_partition="gpu-ms,gpu-troja",
+        constraint="gpuram16G|gpuram24G",
+        slurm_extra="--gres=gpu:1"
+    run:
+        from pos_tagger import train_pos_tagger
+        import json
+
+        accuracies = []
+        for i in range(5):
+            accuracy = train_pos_tagger(
+                wildcards.lng, tokenizer_type="legros",
+                legros_subwords=input.subwords,
+                legros_embeddings=input.embeddings,
+                legros_fasttext=input.fasttext,
                 seed=1348 + i)
             accuracies.append(accuracy)
 

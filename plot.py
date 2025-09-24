@@ -48,7 +48,7 @@ metrics_to_plot = (
 fig, axes = plt.subplots(
     3, 3, 
     sharex=True, #figsize=(15,5)
-    figsize=(18, 15)
+    figsize=(16, 16)
 )  
 axes = axes.flatten()  
 lang_map = {'ces': 'cs', 'deu': 'de', 'eng': 'en', 'nld': 'nl', 'fin':'fn', 'hbs':'hb', 'hye':'hy' ,'kan':'kn', 'slk':'sk'}
@@ -71,40 +71,43 @@ for file_idx, (scores, baseline) in enumerate(all_scores):
             threshold = float(key.split('-')[-1])
             mode = key.split('-')[-2]
             type_ = key.split('-')[-3]
-            for m in metrics_to_plot:
-                scores_by_type[m][type_][mode][threshold] = values[m][0]
+            if type_ not in ('harmonic', 'geometric'):
+                for m in metrics_to_plot:
+                    scores_by_type[m][type_][mode][threshold] = values[m][0]
 
         for ti, (type_, modes_dict) in enumerate(scores_by_type[metric].items()):
-            for mi, (mode, threshold_dict) in enumerate(modes_dict.items()):
-                sorted_items = sorted(threshold_dict.items())
-                thresholds = [t for t, _ in sorted_items]
-                values = [v for _, v in sorted_items]
-                label = f'{type_}-{mode}'
-                line, = ax.plot(
-                    thresholds, values,
-                    marker='o',
-                    label=label,
-                    color=colors[ti % len(colors)],
-                    linestyle=linestyles[mi % len(linestyles)]
-                )
+            
+                for mi, (mode, threshold_dict) in enumerate(modes_dict.items()):
+                    sorted_items = sorted(threshold_dict.items())
+                    thresholds = [t for t, _ in sorted_items]
+                    values = [v for _, v in sorted_items]
+                    label = f'{type_}-{mode}'
+                    line, = ax.plot(
+                        thresholds, values,
+                        marker='o',
+                        label=label,
+                        color=colors[ti % len(colors)],
+                        linestyle=linestyles[mi % len(linestyles)]
+                    )
             
 
         if baseline:
             ax.axhline(baseline[metric][0], linewidth=2.5, linestyle='--', color='red', label='Baseline')
-
-        ax.set_title(f'{lang_map[file_label]}')
-      
+        ax.axhline(0.0, linewidth=2.5, linestyle='-', color='black')
+        ax.set_title(f'{lang_map[file_label]}', fontsize=18)
+        #ax.set_title(metric_titles[metric], fontsize=18)
+        ax.tick_params(axis='both', labelsize=12)
         ax.grid(True)
 
 plt.legend(
     bbox_to_anchor=(1.05, 1.05),
     loc='best',
-    fontsize=12,
+    fontsize=15,
     frameon=False
 )
 
-fig.supxlabel('Threshold', fontsize=12)  
-fig.supylabel(args.metric, fontsize=12)  
+fig.supxlabel('Threshold', fontsize=18)  
+fig.supylabel(args.metric, fontsize=18)  
 plt.tight_layout()
 
 plt.show()

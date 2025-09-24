@@ -62,6 +62,10 @@ localrules: tokenize_unimorph_our_tokenizer, tokenize_unimorph_huggingface, char
 rule all:
     input:
         expand("correlations/{dataset}.txt", dataset=DATASETS),
+        #expand("pos_tagging/{lng}/{tokenizer_type}-{vocab_size}k.tsv",
+        #    lng=[l for l in LANGUAGES if l != "kan"],
+        #    tokenizer_type=["bpe", "unigram", "wordpiece"],
+        #    vocab_size=VOCAB_SIZES),
 
 
 rule download_cc100:
@@ -134,22 +138,24 @@ rule train_tokenizer:
 
 
 def unicode_safe_tokenize(tokenizer, text):
-    # Get the encoding with offsets
-    encoding = tokenizer(text, add_special_tokens=False, return_offsets_mapping=True)
+    try:
+        # Get the encoding with offsets
+        encoding = tokenizer(text, add_special_tokens=False, return_offsets_mapping=True)
 
-    offset_mapping = encoding["offset_mapping"]
-    # Fix the offset mapping, so it is non-overlapping and covers the whole string
-    for i in range(len(offset_mapping) - 1):
-        this_start, this_end = offset_mapping[i]
-        next_start, next_end = offset_mapping[i + 1]
-        if this_end != next_start:
-            offset_mapping[i + 1] = (this_end, next_end)
+        offset_mapping = encoding["offset_mapping"]
+        # Fix the offset mapping, so it is non-overlapping and covers the whole string
+        for i in range(len(offset_mapping) - 1):
+            this_start, this_end = offset_mapping[i]
+            next_start, next_end = offset_mapping[i + 1]
+            if this_end != next_start:
+                offset_mapping[i + 1] = (this_end, next_end)
 
-    # Extract tokens directly from the original text using the offsets
-    original_tokens = [text[start:end] for start, end in offset_mapping]
-
-    return original_tokens #, standard_tokens
-
+        # Extract tokens directly from the original text using the offsets
+        original_tokens = [text[start:end] for start, end in offset_mapping]
+        return original_tokens #, standard_tokens
+    except:
+        # If the tokenizer fails, fall back to character-level tokenization
+        return list(text)  # Return characters as tokens
 
 
 def tokenize_unimorph(input_file, output_file, tokenizer):
@@ -298,8 +304,8 @@ rule compute_correlations:
     input:
         gold_tokenizer="evaluated/{dataset}/gold.json",
         char_tokenizer="evaluated/{dataset}/char.json",
-        our_tokenizers=expand("evaluated/{{dataset}}/{tok_type}-{vocab_size}k.json",
-            vocab_size=VOCAB_SIZES, tok_type=["bpe", "unigram", "wordpiece"]),
+        our_tokenizers=expand("evaluated/{{dataset}}/{prefix}{tok_type}-{vocab_size}k.json",
+            vocab_size=VOCAB_SIZES, tok_type=["bpe", "unigram", "wordpiece"], prefix=["", "legros-"]),
         #pretrained_tokenizers=expand("evaluated/{{dataset}}/pretrained-{tokenizer}-{threshold}.json",
         #    tokenizer=PRE_TRAINED_TOKENIZERS.keys(), threshold=THRESHOLDS),
     output:
@@ -312,7 +318,7 @@ rule compute_correlations:
             input.our_tokenizers) #+ input.pretrained_tokenizers)
 
         # Identify columns that start with 'test-'
-        test_columns = ["avg_segments"] + [col for col in df.columns if col.startswith('test-')]
+        test_columns = ["avg_segments", "segments_ratio"] + [col for col in df.columns if col.startswith('test-')]
 
         # Identify other columns (excluding 'tokenizer' which is likely non-numeric)
         other_columns = ["boundary_precision", "boundary_recall", "boundary_f_score"]
@@ -334,3 +340,186 @@ rule compute_correlations:
         # Save the correlation DataFrame to a text file
         correlation_df.to_csv(output[0], sep='\t', index=True, header=True)
         print(f"Correlations saved to {output[0]}")
+
+
+rule train_pos_tagger:
+    input:
+        tokenizer="tokenizers/{lng}/{tokenizer_type}-{vocab_size}k.json",
+    output:
+        "pos_tagging/{lng}/{tokenizer_type}-{vocab_size}k.tsv"
+    resources:
+        mem="16G",
+        tasks=1,
+        cpus_per_task=4,
+        slurm_partition="gpu-ms,gpu-troja",
+        constraint="gpuram16G|gpuram24G",
+        slurm_extra="--gres=gpu:1"
+    run:
+        from pos_tagger import train_pos_tagger
+        import json
+
+        accuracies = []
+        for i in range(5):
+            accuracy = train_pos_tagger(
+                wildcards.lng, tokenizer_type="subwords",
+                subword_model=input.tokenizer,
+                seed=1348 + i)
+            accuracies.append(accuracy)
+
+        avg_accuracy = sum(accuracies) / len(accuracies)
+        with open(output[0], 'w', encoding='UTF-8') as f_out:
+            json.dump({
+                    "accuracies": accuracies,
+                    "avg_accuracy": avg_accuracy},
+                f_out, ensure_ascii=False, indent=4)
+
+
+rule pretokenize_corpus_for_fasttext:
+    input: "data/cc100/{lng}.txt"
+    output: "data/cc100/{lng}.txt.tok"
+    threads: 8
+    resources:
+        mem="32G",
+        cpus_per_task=8
+    shell:
+        "cat {input} | sacremoses -j {threads} -l {wildcards.lng} tokenize -x > {output}"
+
+legros_home = "legros"  # Adjust this path to your Legros installation directory
+
+rule train_fasttext:
+    input: "data/cc100/{lng}.txt.tok"
+    output:
+        model="data/fasttext/{lng}/fasttext",
+        aux="data/fasttext/{lng}/fasttext.syn1neg.npy",
+        vocab="data/fasttext/{lng}/fasttext.vocab",
+        pinv="data/fasttext/{lng}/fasttext.out_inv.txt",
+        text="data/fasttext/{lng}/fasttext.txt",
+        wvvocab="data/fasttext/{lng}/fasttext.wv.vectors_vocab.npy",
+        wvngrams="data/fasttext/{lng}/fasttext.wv.vectors_ngrams.npy"
+    threads: 16
+    resources:
+        mem="32G",
+        cpus_per_task=16
+    params:
+        dimension=200,
+        vocab_size=200000,
+        epochs=10
+    shell:
+        """
+        python3 {legros_home}/scripts/train_fasttext.py {input} {output.model} \
+            --num-threads {threads} \
+            --dimension {params.dimension} \
+            --vocab-size {params.vocab_size} \
+            --epochs {params.epochs}
+        """
+
+
+rule compile_legros:
+    output:
+        "{legros_home}/build/legros-train"
+    resources:
+        mem="16G",
+        tasks=1,
+        cpus_per_task=4,
+    shell:
+        """
+        if [ ! -d {legros_home} ]; then
+            git submodule update --init --recursive
+        fi
+
+        mkdir -p {legros_home}/build
+        cd {legros_home}/build
+        cmake .. -DCMAKE_BUILD_TYPE=Release
+        make -j 4
+        """
+
+
+rule allowed_init_from_tokenizer:
+    input:
+        vocab="data/fasttext/{lng}/fasttext.vocab",
+        tokenizer="tokenizers/{lng}/{tokenizer_type}-{size_k}k.json"
+    output:
+        "tokenizers/{lng}/legros-{tokenizer_type}-{size_k}k/init.allowed"
+    params:
+        expdir=lambda wildcards, output: output[0][:-13]
+    threads: 2
+    resources:
+        mem="10G",
+        cpus_per_task=2
+    run:
+        from transformers import PreTrainedTokenizerFast
+        tokenizer = PreTrainedTokenizerFast(
+            tokenizer_file=input.tokenizer,
+            bos_token="<s>",
+            eos_token="</s>",
+            unk_token="<unk>",
+            pad_token="<pad>",
+            mask_token="<mask>"
+        )
+
+        with open(input.vocab, 'r', encoding='UTF-8') as f_vocab, \
+             open(output[0], 'w', encoding='UTF-8') as f_out:
+            for line in f_vocab:
+                word = line.strip()
+                tokenized = unicode_safe_tokenize(tokenizer, word)
+                print(' '.join(tokenized), file=f_out)
+
+
+rule train_legros:
+    input:
+        legros_binary=legros_home + "/build/legros-train",
+        data="data/cc100/{lng}.txt",
+        ft_emb_text="data/fasttext/{lng}/fasttext.txt",
+        ft_pinv="data/fasttext/{lng}/fasttext.out_inv.txt",
+        allowed="tokenizers/{lng}/legros-{tokenizer_type}-{vocab_size}k/init.allowed"
+    output:
+        "tokenizers/{lng}/legros-{tokenizer_type}-{vocab_size}k/segmentations.19",
+        "tokenizers/{lng}/legros-{tokenizer_type}-{vocab_size}k/subwords.19",
+        "tokenizers/{lng}/legros-{tokenizer_type}-{vocab_size}k/unigram_stats.19",
+        "tokenizers/{lng}/legros-{tokenizer_type}-{vocab_size}k/bigram_stats.19",
+        "tokenizers/{lng}/legros-{tokenizer_type}-{vocab_size}k/subword_embeddings.19",
+    threads: 60
+    resources:
+        mem="250G",
+        cpus_per_task=60
+    params:
+        epochs=20,
+        output_dir=lambda wildcards, output: output[0][:-17]
+    shell:
+        """
+        {input.legros_binary} \
+            {input.ft_emb_text} \
+            {input.data} \
+            --fastext-output-pseudoinverse {input.ft_pinv} \
+            --allowed-substrings {input.allowed} \
+            --epochs {params.epochs} \
+            --output-directory {params.output_dir}
+
+        rm {params.output_dir}/{{segmentations,subwords,unigram_stats,bigram_stats,subword_embeddings}}.{{1..18}}
+        """
+
+
+rule tokenize_with_legros_tokenizer:
+    input:
+        data="data/morpho/{lng}-{dataset_type}.tsv",
+        subwords="tokenizers/{lng}/legros-{tokenizer_type}-{vocab_size}k/subwords.19",
+        subword_embeddings="tokenizers/{lng}/legros-{tokenizer_type}-{vocab_size}k/subword_embeddings.19",
+        fasttext="data/fasttext/{lng}/fasttext",
+    output:
+        "segmented/{lng}-{dataset_type}/legros-{tokenizer_type}-{vocab_size}k.tsv"
+    wildcard_constraints:
+        lng="|".join(LNG_CODES.keys()),
+    threads: 1
+    resources:
+        mem="10G",
+        cpus_per_task=1
+    shell:
+        """
+        cut -f1 {input.data} | \
+            PYTHONPATH={legros_home}/python python -m legros.segment_vocab_with_subword_embeddings \
+                {input.fasttext} \
+                {input.subwords} \
+                {input.subword_embeddings} | \
+            sed 's/ /|/g' | \
+            paste  <(cut -f1,2 {input.data}) - > {output}
+        """

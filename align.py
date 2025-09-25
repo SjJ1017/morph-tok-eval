@@ -266,6 +266,7 @@ def boundary_positions(word_segments):
 
 def evaluate_segmentations(gold_file, test_file, thresholds, iterations, model, skip_gold_train=False):
     results = {}
+    ModelClass = MODEL_REGISTRY[model]
 
     gold_data = read_data(gold_file)
     if not skip_gold_train:
@@ -276,7 +277,7 @@ def evaluate_segmentations(gold_file, test_file, thresholds, iterations, model, 
         for threshold in thresholds:
             gold_scores_full = compute_score(gold_data, em_segmenter_full, threshold)
             for k, val in gold_scores_full.items():
-                results[f"gold-{k}-{threshold}"] = val
+                results[f"gold-{k}-{threshold}-{model}"] = val
 
         logging.info("Training {} on gold data with split tags".format(args.model))
         em_segmenter_split = ModelClass(num_iterations=iterations, split_tags=True)
@@ -285,7 +286,7 @@ def evaluate_segmentations(gold_file, test_file, thresholds, iterations, model, 
         for threshold in thresholds:
             gold_scores_split = compute_score(gold_data, em_segmenter_split, threshold)
             for k, val in gold_scores_split.items():
-                results[f"gold-{k}-{threshold}"] = val
+                results[f"gold-{k}-{threshold}-{model}"] = val
 
     if test_file is not None:
         test_data = read_data(test_file)
@@ -296,7 +297,7 @@ def evaluate_segmentations(gold_file, test_file, thresholds, iterations, model, 
         for threshold in thresholds:
             test_scores = compute_score(test_data, em_segmenter_full, threshold)
             for k, val in test_scores.items():
-                results[f"test-{k}-{threshold}"] = val
+                results[f"test-{k}-{threshold}-{model}"] = val
 
         logging.info("Training {} on test data with split tags".format(args.model))
         em_segmenter_split = ModelClass(num_iterations=iterations, split_tags=True)
@@ -305,15 +306,15 @@ def evaluate_segmentations(gold_file, test_file, thresholds, iterations, model, 
         for threshold in thresholds:
             test_scores = compute_score(test_data, em_segmenter_split, threshold)
             for k, val in test_scores.items():
-                results[f"test-{k}-{threshold}"] = val
-        
+                results[f"test-{k}-{threshold}-{model}"] = val
+
         precisions = []
         recalls = []
         f_scores = []
         num_segments = []
         num_segments_ratio = []
         total_characters = 0
-        
+
         logging.info("Evaluating segmentations")
         with open(test_file, 'r', encoding='utf-8') as test_f, \
              open(gold_file, 'r', encoding='utf-8') as gold_f:
@@ -357,6 +358,5 @@ if __name__ == "__main__":
     parser.add_argument("--iterations", type=int, default=100, help="IBM iterations")
     parser.add_argument("--model", choices=["IBM1", "IBM2"], default="IBM1", help="Which IBM model to use")
     args = parser.parse_args()
-    ModelClass = MODEL_REGISTRY[args.model]
     results = evaluate_segmentations(args.filename, args.test, args.iterations, args.thresholds, args.model)
     print(json.dumps(results, indent=4))

@@ -55,17 +55,20 @@ DATASETS = [
 THRESHOLDS = [0.01, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5]
 
 
+IBM_MODELS = ["IBM1", "IBM2"]
+
+
 localrules: tokenize_unimorph_our_tokenizer, tokenize_unimorph_huggingface, character_tokenization, gold_tokenization, compute_correlations
 
 
 rule all:
     input:
         expand("correlations/{dataset}.txt", dataset=DATASETS),
-        expand("pos_tagging/{lng}/{tokenizer_prefix}{tokenizer_type}-{vocab_size}k.tsv",
-            lng=[l for l in LANGUAGES if l != "kan"],
-            tokenizer_type=["bpe", "unigram", "wordpiece"],
-            tokenizer_prefix=["", "legros-"],
-            vocab_size=VOCAB_SIZES),
+        #expand("pos_tagging/{lng}/{tokenizer_prefix}{tokenizer_type}-{vocab_size}k.tsv",
+        #    lng=[l for l in LANGUAGES if l != "kan"],
+        #    tokenizer_type=["bpe", "unigram", "wordpiece"],
+        #    tokenizer_prefix=["", "legros-"],
+        #    vocab_size=VOCAB_SIZES),
 
 
 rule download_cc100:
@@ -251,8 +254,11 @@ rule evaluate_segmentation:
     run:
         import json
         from align import evaluate_segmentations
-        results = evaluate_segmentations(
-            input.gold_data, input.segmented_data, THRESHOLDS, 10, skip_gold_train=True)
+        results = {}
+        for model in IBM_MODELS:
+            results.update(evaluate_segmentations(
+                input.gold_data, input.segmented_data, THRESHOLDS, 10,
+                model, skip_gold_train=True))
         with open(output[0], 'w', encoding='UTF-8') as f_out:
             json.dump(results, f_out, ensure_ascii=False, indent=4)
 

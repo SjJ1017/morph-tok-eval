@@ -270,7 +270,7 @@ def evaluate_segmentations(gold_file, test_file, thresholds, iterations, model, 
 
     gold_data = read_data(gold_file)
     if not skip_gold_train:
-        logging.info("Training {} on gold data with full tags".format(args.model))
+        logging.info("Training {} on gold data with full tags".format(model))
         em_segmenter_full = ModelClass(num_iterations=iterations)
         em_segmenter_full.train(gold_data)
         logging.info("Computing scores for gold data with full tags")
@@ -279,7 +279,7 @@ def evaluate_segmentations(gold_file, test_file, thresholds, iterations, model, 
             for k, val in gold_scores_full.items():
                 results[f"gold-{k}-{threshold}-{model}"] = val
 
-        logging.info("Training {} on gold data with split tags".format(args.model))
+        logging.info("Training {} on gold data with split tags".format(model))
         em_segmenter_split = ModelClass(num_iterations=iterations, split_tags=True)
         em_segmenter_split.train(gold_data)
         logging.info("Computing scores for gold data with split tags")
@@ -290,7 +290,7 @@ def evaluate_segmentations(gold_file, test_file, thresholds, iterations, model, 
 
     if test_file is not None:
         test_data = read_data(test_file)
-        logging.info("Training {} on test data with full tags".format(args.model))
+        logging.info("Training {} on test data with full tags".format(model))
         em_segmenter_full = ModelClass(num_iterations=iterations)
         em_segmenter_full.train(test_data)
         logging.info("Computing scores for test data with full tags")
@@ -299,7 +299,7 @@ def evaluate_segmentations(gold_file, test_file, thresholds, iterations, model, 
             for k, val in test_scores.items():
                 results[f"test-{k}-{threshold}-{model}"] = val
 
-        logging.info("Training {} on test data with split tags".format(args.model))
+        logging.info("Training {} on test data with split tags".format(model))
         em_segmenter_split = ModelClass(num_iterations=iterations, split_tags=True)
         em_segmenter_split.train(test_data)
         logging.info("Computing scores for test data with split tags")

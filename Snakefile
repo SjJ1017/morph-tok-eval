@@ -1,4 +1,4 @@
-LANGUAGES = ["ces", "fin", "hye", "kan", "deu", "eng", "hbs", "nld", "slk"]
+LANGUAGES = ["ces", "fin", "hye", "kan", "deu", "eng", "hbs", "nld", "slk", "hun"]
 
 LNG_CODES = {
     "ces": "cs", # Czech
@@ -10,6 +10,7 @@ LNG_CODES = {
     "hbs": "hr", # Serbo-Croatian
     "nld": "nl", # Dutch
     "slk": "sk", # Slovak
+    "hun": "hu", # Hungarian
 }
 
 
@@ -46,6 +47,7 @@ MULTIBLIMP_SCORES = {
     "kan": 00.0, # No score available
     "nld": 100.0, #Llama 3 8B
     "slk": 96.3, # EuroLLM 9B
+    "hun": 99.2, #Llama 3 70B
 }
 
 DATASETS = [
@@ -60,6 +62,7 @@ DATASETS = [
 	"kan-unimorph2uniseg_KCIS",
 	"nld-unimorph2uniseg_CELEX",
     "slk-unimorph2olostiak",
+    "hun-unimorph2uniseg_MorphyNet"
 ]
 
 

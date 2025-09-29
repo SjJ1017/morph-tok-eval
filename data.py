@@ -2,9 +2,9 @@ import argparse
 from collections import defaultdict
 
 
-parser = argparse.ArgumentParser(description="Run the IBM Model1 algorithm for extracting a morpheme-aligned score for subword tokens")
+parser = argparse.ArgumentParser(description="Create training dataset for morph-tok-eval using UniMorph and UniSegments data")
 parser.add_argument("--features", help='The UniMorph file')
-parser.add_argument("--segments", help='The UniMorph file')
+parser.add_argument("--segments", help='The UniMorph or UniSegments file')
 args = parser.parse_args()
 
 def unimorph(data):

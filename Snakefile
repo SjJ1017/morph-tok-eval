@@ -36,6 +36,17 @@ PRE_TRAINED_TOKENIZERS = {
     "falcon": "tiiuae/falcon-7b-instruct",
 }
 
+MULTIBLIMP_SCORES = {
+    "ces": 97.2, #EuroLLM 9B
+    "deu": 99.0, #Llama 3 70B
+    "eng": 99.5, #OLMo2 32B
+    "fin": 96.4, #Gemma3 27B
+    "hbs": 98.3, #Gemma3 27B
+    "hye": 98.4, #Llama 3 70B
+    "kan": 00.0, # No score available
+    "nld": 100.0, #Llama 3 8B
+    "slk": 96.3, # EuroLLM 9B
+}
 
 DATASETS = [
 	"ces-unimorph2uniseg_derinet",
@@ -84,7 +95,7 @@ rule download_cc100:
         """
         mkdir -p data/cc100
         wget https://data.statmt.org/cc-100/{params.lng}.txt.xz -O data/cc100/{wildcards.lng}.tmp.xz
-        xzcat data/cc100/{wildcards.lng}.tmp.xz | head -n 1M > data/cc100/{wildcards.lng}.txt
+        xzcat data/cc100/{wildcards.lng}.tmp.xz | head -n 1M > data/cc100/{wildcards.lng}.txt || true
         rm data/cc100/{wildcards.lng}.tmp.xz
         """
 
@@ -323,11 +334,18 @@ rule compute_correlations:
             [input.gold_tokenizer, input.char_tokenizer] +
             input.our_tokenizers) #+ input.pretrained_tokenizers)
 
+        lang_code = wildcards.dataset[:3]
+        
+        if lang_code in LANGUAGE_SCORES:
+            df['language_score'] = LANGUAGE_SCORES[lang_code]
+        else:
+            df['language_score'] = None
+
         # Identify columns that start with 'test-'
         test_columns = ["avg_segments", "segments_ratio"] + [col for col in df.columns if col.startswith('test-')]
 
         # Identify other columns (excluding 'tokenizer' which is likely non-numeric)
-        other_columns = ["boundary_precision", "boundary_recall", "boundary_f_score"]
+        other_columns = ["boundary_precision", "boundary_recall", "boundary_f_score", "language_score"]
 
         # Create an empty DataFrame to store correlations
         correlation_df = pd.DataFrame(

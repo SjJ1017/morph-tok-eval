@@ -5,3 +5,6 @@ tokenizers
 segmented
 evaluated
 correlations
+data/fasttext/
+pos_correlations/
+pos_tagging

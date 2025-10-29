@@ -77,7 +77,8 @@ localrules: tokenize_unimorph_our_tokenizer, tokenize_unimorph_huggingface, char
 
 rule all:
     input:
-        expand("correlations/{dataset}.txt", dataset=DATASETS),
+        expand("alignment_segmnentation/{dataset}/alignment_table.json", dataset=DATASETS),
+        #expand("correlations/{dataset}.txt", dataset=DATASETS),
         #expand("pos_tagging/{lng}/{tokenizer_prefix}{tokenizer_type}-{vocab_size}k.tsv",
         #    lng=[l for l in LANGUAGES if l != "kan"],
         #    tokenizer_type=["bpe", "unigram", "wordpiece"],
@@ -193,7 +194,7 @@ rule tokenize_unimorph_our_tokenizer:
     output:
         "segmented/{lng}-{dataset_type}/{tokenizer_type}-{vocab_size}k.tsv"
     wildcard_constraints:
-        lng="|".join(LNG_CODES.keys()),
+        lng="|".join(LNG_CODES.keys())
     run:
         from transformers import PreTrainedTokenizerFast
         tokenizer = PreTrainedTokenizerFast(
@@ -260,7 +261,7 @@ rule evaluate_segmentation:
         gold_data="data/morpho/{dataset}.tsv",
         segmented_data="segmented/{dataset}/{segmented_file}.tsv"
     output:
-        "evaluated/{dataset}/{segmented_file}.json"
+        "evaluated/{dataset}/{segmented_file}.json",
     resources:
         mem="4G",
         tasks=1,
@@ -270,11 +271,33 @@ rule evaluate_segmentation:
         from align import evaluate_segmentations
         results = {}
         for model in IBM_MODELS:
-            results.update(evaluate_segmentations(
+            res, _ = evaluate_segmentations(
                 input.gold_data, input.segmented_data, THRESHOLDS, 10,
-                model, skip_gold_train=True))
+                model, skip_gold_train=True)
+            results.update(res)
         with open(output[0], 'w', encoding='UTF-8') as f_out:
             json.dump(results, f_out, ensure_ascii=False, indent=4)
+
+
+rule alignment_table:
+    input:
+        gold_data="data/morpho/{dataset}.tsv",
+    output:
+        "alignment_segmnentation/{dataset}/alignment_table.json",
+    resources:
+        mem="4G",
+        tasks=1,
+        cpus_per_task=2,
+    run:
+        from align import IBM1, read_data
+        import json
+        ibm_model = IBM1(num_iterations=50)
+        ibm_model.train(read_data(input.gold_data))
+
+        # Save ibm_model.translation_probs (it is defaultdict of defaultdicts) as JSON
+        alignment_table = {k: dict(v) for k, v in ibm_model.translation_probs.items()}
+        with open(output[0], 'w', encoding='UTF-8') as f_out:
+            json.dump(alignment_table, f_out, ensure_ascii=False, indent=4)
 
 
 def load_json_files_to_dataframe(file_list):

@@ -225,19 +225,19 @@ def harmonic_mean(numbers):
     return len(numbers) / np.sum(1.0 / np.array(numbers))
 
 
-def compute_score(data, em_segmenter, threshold):
+def compute_score(data, ibm_model, threshold):
     results = defaultdict(float)
     total_segments = 0
     for word, full_tags, split_tags, segmentation in data:
         for segment in segmentation:
             total_segments += 1
-            if em_segmenter.split_tags:
+            if ibm_model.split_tags:
                 tags = split_tags
                 suffix = "split"
             else:
                 tags = full_tags
                 suffix = "full"
-            prob = em_segmenter.get_prob(segment, tags)
+            prob = ibm_model.get_prob(segment, tags)
             scores = [x for x in prob.values() if x > threshold]
 
             if len(scores) > 0:
@@ -271,40 +271,40 @@ def evaluate_segmentations(gold_file, test_file, thresholds, iterations, model, 
     gold_data = read_data(gold_file)
     if not skip_gold_train:
         logging.info("Training {} on gold data with full tags".format(model))
-        em_segmenter_full = ModelClass(num_iterations=iterations)
-        em_segmenter_full.train(gold_data)
+        ibm_model_full = ModelClass(num_iterations=iterations)
+        ibm_model_full.train(gold_data)
         logging.info("Computing scores for gold data with full tags")
         for threshold in thresholds:
-            gold_scores_full = compute_score(gold_data, em_segmenter_full, threshold)
+            gold_scores_full = compute_score(gold_data, ibm_model_full, threshold)
             for k, val in gold_scores_full.items():
                 results[f"gold-{k}-{threshold}-{model}"] = val
 
         logging.info("Training {} on gold data with split tags".format(model))
-        em_segmenter_split = ModelClass(num_iterations=iterations, split_tags=True)
-        em_segmenter_split.train(gold_data)
+        ibm_model_split = ModelClass(num_iterations=iterations, split_tags=True)
+        ibm_model_split.train(gold_data)
         logging.info("Computing scores for gold data with split tags")
         for threshold in thresholds:
-            gold_scores_split = compute_score(gold_data, em_segmenter_split, threshold)
+            gold_scores_split = compute_score(gold_data, ibm_model_split, threshold)
             for k, val in gold_scores_split.items():
                 results[f"gold-{k}-{threshold}-{model}"] = val
 
     if test_file is not None:
         test_data = read_data(test_file)
         logging.info("Training {} on test data with full tags".format(model))
-        em_segmenter_full = ModelClass(num_iterations=iterations)
-        em_segmenter_full.train(test_data)
+        ibm_model_full = ModelClass(num_iterations=iterations)
+        ibm_model_full.train(test_data)
         logging.info("Computing scores for test data with full tags")
         for threshold in thresholds:
-            test_scores = compute_score(test_data, em_segmenter_full, threshold)
+            test_scores = compute_score(test_data, ibm_model_full, threshold)
             for k, val in test_scores.items():
                 results[f"test-{k}-{threshold}-{model}"] = val
 
         logging.info("Training {} on test data with split tags".format(model))
-        em_segmenter_split = ModelClass(num_iterations=iterations, split_tags=True)
-        em_segmenter_split.train(test_data)
+        ibm_model_split = ModelClass(num_iterations=iterations, split_tags=True)
+        ibm_model_split.train(test_data)
         logging.info("Computing scores for test data with split tags")
         for threshold in thresholds:
-            test_scores = compute_score(test_data, em_segmenter_split, threshold)
+            test_scores = compute_score(test_data, ibm_model_split, threshold)
             for k, val in test_scores.items():
                 results[f"test-{k}-{threshold}-{model}"] = val
 
@@ -347,7 +347,7 @@ def evaluate_segmentations(gold_file, test_file, thresholds, iterations, model, 
         results["segments_ratio"] = np.mean(num_segments_ratio)
 
     logging.info("Done.")
-    return results
+    return results, model
 
 
 if __name__ == "__main__":
@@ -358,5 +358,5 @@ if __name__ == "__main__":
     parser.add_argument("--iterations", type=int, default=100, help="IBM iterations")
     parser.add_argument("--model", choices=["IBM1", "IBM2"], default="IBM1", help="Which IBM model to use")
     args = parser.parse_args()
-    results = evaluate_segmentations(args.filename, args.test, args.iterations, args.thresholds, args.model)
+    results = train_alignment_and_evaluate_segmentations(args.filename, args.test, args.iterations, args.thresholds, args.model)
     print(json.dumps(results, indent=4))

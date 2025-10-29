@@ -77,7 +77,7 @@ localrules: tokenize_unimorph_our_tokenizer, tokenize_unimorph_huggingface, char
 
 rule all:
     input:
-        expand("alignment_segmnentation/{dataset}/alignment_table.json", dataset=DATASETS),
+        expand("alignment_segmnentation/{dataset}/alignment_table.json.gz", dataset=DATASETS),
         #expand("correlations/{dataset}.txt", dataset=DATASETS),
         #expand("pos_tagging/{lng}/{tokenizer_prefix}{tokenizer_type}-{vocab_size}k.tsv",
         #    lng=[l for l in LANGUAGES if l != "kan"],
@@ -283,7 +283,7 @@ rule alignment_table:
     input:
         gold_data="data/morpho/{dataset}.tsv",
     output:
-        "alignment_segmnentation/{dataset}/alignment_table.json",
+        "alignment_segmnentation/{dataset}/alignment_table.json.gz",
     resources:
         mem="4G",
         tasks=1,
@@ -291,12 +291,13 @@ rule alignment_table:
     run:
         from align import IBM1, read_data
         import json
+        import gzip
         ibm_model = IBM1(num_iterations=50)
         ibm_model.train(read_data(input.gold_data))
 
         # Save ibm_model.translation_probs (it is defaultdict of defaultdicts) as JSON
         alignment_table = {k: dict(v) for k, v in ibm_model.translation_probs.items()}
-        with open(output[0], 'w', encoding='UTF-8') as f_out:
+        with gzip.open(output[0], 'wt', encoding='UTF-8') as f_out:
             json.dump(alignment_table, f_out, ensure_ascii=False, indent=4)
 
 

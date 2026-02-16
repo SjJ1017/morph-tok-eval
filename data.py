@@ -1,12 +1,6 @@
 import argparse
 from collections import defaultdict
 
-
-parser = argparse.ArgumentParser(description="Create training dataset for morph-tok-eval using UniMorph and UniSegments data")
-parser.add_argument("--features", help='The UniMorph file')
-parser.add_argument("--segments", help='The UniMorph or UniSegments file')
-args = parser.parse_args()
-
 def unimorph(data):
     word2features = defaultdict()
     with open (data) as file:
@@ -33,9 +27,23 @@ def unisegments(data):
     return word2segments
 
 
-features_dict = unimorph(args.features)
-segments_dict = unisegments(args.segments)
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Create training dataset for morph-tok-eval using UniMorph and UniSegments data"
+    )
+    parser.add_argument("--features", required=True, help="The UniMorph file")
+    parser.add_argument("--segments", required=True, help="The UniMorph or UniSegments file")
+    args = parser.parse_args()
 
-for forms in features_dict.keys():
-    if forms in segments_dict:
-        print(forms, features_dict[forms], segments_dict[forms], sep = '\t')
+    features_dict = unimorph(args.features)
+    segments_dict = unisegments(args.segments)
+
+    for forms in features_dict.keys():
+        if forms in segments_dict:
+            print(forms, features_dict[forms], segments_dict[forms], sep='\t')
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

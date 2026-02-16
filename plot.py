@@ -1,11 +1,6 @@
-import matplotlib.pyplot as plt
-from collections import defaultdict
 import argparse
-
-parser = argparse.ArgumentParser(description="Plot metrics from input")
-parser.add_argument('--metric',choices=['Precision', 'Recall', 'F1-Score', 'all'], default='all',help="Metric to plot (default: all)")
-parser.add_argument('--input', type=argparse.FileType('r'), nargs='+', required=True, help="Paths to input files (tab-separated format)")
-args = parser.parse_args()
+from collections import defaultdict
+import matplotlib.pyplot as plt
 
 
 def process_file(input_file):
@@ -25,89 +20,125 @@ def process_file(input_file):
     return scores
 
 
-all_scores = []
-for file in args.input:
-    scores = process_file(file)
-    baseline = scores.pop('avg_segments')
-    all_scores.append((scores, baseline))
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Plot metrics from input")
+    parser.add_argument(
+        "--metric",
+        choices=["Precision", "Recall", "F1-Score", "all"],
+        default="all",
+        help="Metric to plot (default: all)",
+    )
+    parser.add_argument(
+        "--input",
+        type=argparse.FileType("r"),
+        nargs="+",
+        required=True,
+        help="Paths to input files (tab-separated format)",
+    )
+    args = parser.parse_args()
 
+    all_scores = []
+    for file in args.input:
+        scores = process_file(file)
+        baseline = scores.pop("avg_segments")
+        all_scores.append((scores, baseline))
 
-metric_titles = {
-    'Recall': 'Recall',
-    'Precision': 'Precision',
-    'F1-Score': 'F-score'
-}
-colors = ['blue', 'green', 'red', 'purple', 'orange', 'brown', 'gray']
-linestyles = ['-', '--', ':', '-.']
+    metric_titles = {
+        "Recall": "Recall",
+        "Precision": "Precision",
+        "F1-Score": "F-score",
+    }
+    colors = ["blue", "green", "red", "purple", "orange", "brown", "gray"]
+    linestyles = ["-", "--", ":", "-."]
 
-metrics_to_plot = (
-    ['Recall', 'Precision', 'F1-Score']
-    if args.metric == 'all' else [args.metric]
-)
+    metrics_to_plot = (
+        ["Recall", "Precision", "F1-Score"] if args.metric == "all" else [args.metric]
+    )
 
-fig, axes = plt.subplots(
-    3, 3, 
-    sharex=True, #figsize=(15,5)
-    figsize=(16, 16)
-)  
-axes = axes.flatten()  
-lang_map = {'ces': 'cs', 'deu': 'de', 'eng': 'en', 'nld': 'nl', 'fin':'fn', 'hbs':'hb', 'hye':'hy' ,'kan':'kn', 'slk':'sk'}
-for file_idx, (scores, baseline) in enumerate(all_scores):
-    file_label = args.input[file_idx].name.split('/')[-1].split('.')[0].split('-')[0]
+    fig, axes = plt.subplots(
+        3,
+        3,
+        sharex=True,  # figsize=(15,5)
+        figsize=(16, 16),
+    )
+    axes = axes.flatten()
+    lang_map = {
+        "ces": "cs",
+        "deu": "de",
+        "eng": "en",
+        "nld": "nl",
+        "fin": "fn",
+        "hbs": "hb",
+        "hye": "hy",
+        "kan": "kn",
+        "slk": "sk",
+    }
+    for file_idx, (scores, baseline) in enumerate(all_scores):
+        file_label = args.input[file_idx].name.split("/")[-1].split(".")[0].split("-")[0]
 
-    for metric_idx, metric in enumerate(metrics_to_plot):
-        ax_idx = file_idx * len(metrics_to_plot) + metric_idx
-        if ax_idx >= len(axes):
-            continue
-        ax = axes[ax_idx]
+        for metric_idx, metric in enumerate(metrics_to_plot):
+            ax_idx = file_idx * len(metrics_to_plot) + metric_idx
+            if ax_idx >= len(axes):
+                continue
+            ax = axes[ax_idx]
 
-        scores_by_type = {
-            'Recall': defaultdict(lambda: defaultdict(dict)),
-            'Precision': defaultdict(lambda: defaultdict(dict)),
-            'F1-Score': defaultdict(lambda: defaultdict(dict))
-        }
+            scores_by_type = {
+                "Recall": defaultdict(lambda: defaultdict(dict)),
+                "Precision": defaultdict(lambda: defaultdict(dict)),
+                "F1-Score": defaultdict(lambda: defaultdict(dict)),
+            }
 
-        for key, values in scores.items():
-            threshold = float(key.split('-')[-1])
-            mode = key.split('-')[-2]
-            type_ = key.split('-')[-3]
-            if type_ not in ('harmonic', 'geometric'):
-                for m in metrics_to_plot:
-                    scores_by_type[m][type_][mode][threshold] = values[m][0]
+            for key, values in scores.items():
+                threshold = float(key.split("-")[-1])
+                mode = key.split("-")[-2]
+                type_ = key.split("-")[-3]
+                if type_ not in ("harmonic", "geometric"):
+                    for m in metrics_to_plot:
+                        scores_by_type[m][type_][mode][threshold] = values[m][0]
 
-        for ti, (type_, modes_dict) in enumerate(scores_by_type[metric].items()):
-            
+            for ti, (type_, modes_dict) in enumerate(scores_by_type[metric].items()):
                 for mi, (mode, threshold_dict) in enumerate(modes_dict.items()):
                     sorted_items = sorted(threshold_dict.items())
                     thresholds = [t for t, _ in sorted_items]
                     values = [v for _, v in sorted_items]
-                    label = f'{type_}-{mode}'
-                    line, = ax.plot(
-                        thresholds, values,
-                        marker='o',
+                    label = f"{type_}-{mode}"
+                    ax.plot(
+                        thresholds,
+                        values,
+                        marker="o",
                         label=label,
                         color=colors[ti % len(colors)],
-                        linestyle=linestyles[mi % len(linestyles)]
+                        linestyle=linestyles[mi % len(linestyles)],
                     )
-            
 
-        if baseline:
-            ax.axhline(baseline[metric][0], linewidth=2.5, linestyle='--', color='red', label='Baseline')
-        ax.axhline(0.0, linewidth=2.5, linestyle='-', color='black')
-        ax.set_title(f'{lang_map[file_label]}', fontsize=18)
-        #ax.set_title(metric_titles[metric], fontsize=18)
-        ax.tick_params(axis='both', labelsize=12)
-        ax.grid(True)
+            if baseline:
+                ax.axhline(
+                    baseline[metric][0],
+                    linewidth=2.5,
+                    linestyle="--",
+                    color="red",
+                    label="Baseline",
+                )
+            ax.axhline(0.0, linewidth=2.5, linestyle="-", color="black")
+            ax.set_title(f"{lang_map[file_label]}", fontsize=18)
+            # ax.set_title(metric_titles[metric], fontsize=18)
+            ax.tick_params(axis="both", labelsize=12)
+            ax.grid(True)
 
-plt.legend(
-    bbox_to_anchor=(1.05, 1.05),
-    loc='best',
-    fontsize=15,
-    frameon=False
-)
+    plt.legend(
+        bbox_to_anchor=(1.05, 1.05),
+        loc="best",
+        fontsize=15,
+        frameon=False,
+    )
 
-fig.supxlabel('Threshold', fontsize=18)  
-fig.supylabel(args.metric, fontsize=18)  
-plt.tight_layout()
+    fig.supxlabel("Threshold", fontsize=18)
+    fig.supylabel(args.metric, fontsize=18)
+    plt.tight_layout()
 
-plt.show()
+    plt.show()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

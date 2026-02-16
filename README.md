@@ -1,5 +1,14 @@
 # morph-tok-eval
 
+## Package layout
+
+This repo is a Python package. The importable package lives in `morph_tok_eval/`
+and the repository root is the project workspace. Example:
+
+```python
+from morph_tok_eval.align import IBM1
+```
+
 ## Replicating the paper experiments
 
 Install the dependencies using `requirements.txt`.
